@@ -1,11 +1,32 @@
 # dwm: dynamic window manager for X11 (AUR-only, suckless.org). Built via
 # `fau build dwm`. Scaffolded by tools/aur-to-fis (main FloraOS repo) from
-# the real AUR PKGBUILD, then hand-finished: recipe_build below is a direct
-# translation of that PKGBUILD's build()/package() (verified against the
-# real dwm-6.8 Makefile/config.mk, not guessed) -- PREFIX/X11INC/X11LIB/
-# FREETYPEINC overrides are copied as-is from the AUR PKGBUILD's own
-# build(), since config.mk's own defaults (PREFIX=/usr/local,
-# X11INC=/usr/X11R6/include) predate merged-/usr modern Linux layouts.
+# the real AUR PKGBUILD, then hand-finished against the real dwm-6.8
+# Makefile/config.mk. X11INC/X11LIB/FREETYPEINC point into $sandbox_dir, NOT
+# the real /usr/include/X11 the AUR PKGBUILD's own build() uses -- that path
+# is real on a normal Arch desktop (and on THIS project's own dev/build
+# host, which is why an earlier version of this recipe passed a sandboxed
+# dev test that never should have: it was silently compiling against the
+# dev host's own real X11 headers, not the fetched build-dependency
+# sandbox) but doesn't exist at all on a real FloraOS root --
+# X11/Xinerama/Xft/freetype2 are only ever fetched into the throwaway
+# PKG_BUILD_DEPS sandbox, never installed system-wide. Found on a real `fau
+# install dwm` inside FloraOS itself ("X11/Xlib.h: No such file or
+# directory"), then reproduced for real on the dev host too using `bwrap`
+# to hide its own real X11 headers -- see fau.md's own wayland-scanner/
+# meson note for the exact same class of "this dev machine already has the
+# real package installed" masking bug.
+#
+# X11INC is $sandbox_dir/usr/include, NOT .../usr/include/X11 like the AUR
+# PKGBUILD's own build() uses -- drw.c does `#include <X11/Xlib.h>`, so -I
+# needs to point at the PARENT of the X11/ dir for that to resolve, not the
+# X11/ dir itself. The PKGBUILD's own .../include/X11 value only ever
+# "worked" because gcc's built-in default search list already includes
+# plain /usr/include as a fallback on a real system, silently catching what
+# the explicit -I flag was actually missing -- confirmed directly with
+# `cc -v` inside the same bwrap-masked sandbox, not guessed a second time.
+# FREETYPEINC needed no such fix: libXft's own Xft.h does a bare
+# `#include <ft2build.h>`, which really does need -I pointed AT
+# freetype2/ itself (confirmed against the real installed Xft.h).
 PKG_SRC_URL="https://dl.suckless.org/dwm/dwm-6.8.tar.gz"
 PKG_SRC_SHA256="bcf540589ad174d4073f4efa658828411e2f5ba63196cfaf6b71363700f590b7"
 PKG_VERSION="6.8"
@@ -25,7 +46,11 @@ recipe_build() {
 	local jobs; jobs=$(nproc)
 	(
 		cd "$src"
-		make X11INC=/usr/include/X11 X11LIB=/usr/lib/X11 FREETYPEINC=/usr/include/freetype2 -j"$jobs"
+		make \
+			X11INC="$sandbox_dir/usr/include" \
+			X11LIB="$sandbox_dir/usr/lib" \
+			FREETYPEINC="$sandbox_dir/usr/include/freetype2" \
+			-j"$jobs"
 		make PREFIX=/usr DESTDIR="$app_dir" install
 	)
 }
