@@ -3,7 +3,7 @@ PKG_SRC_URL="https://github.com/mangowm/mango/archive/refs/tags/0.14.4.tar.gz"
 PKG_SRC_SHA256="e37e732ff3b0db309fc616cec5ed9699e972f2969f82c1bbc3c5a298168401f8"
 PKG_VERSION="0.14.4"
 PKG_DESCRIPTION="dwl-fork Wayland compositor (AUR-only, wlroots-0.19-based)"
-PKG_DEPENDS="glibc,wlroots0.19,wayland,libxkbcommon,libinput,libdrm,libxcb,xcb-util-wm,pcre2,pixman,cjson,pango,mesa,libglvnd,xorg-xwayland"
+PKG_DEPENDS="glibc,wlroots0.19,wayland,libxkbcommon,libinput,libdrm,libxcb,xcb-util-wm,pcre2,pixman,cjson,pango,mesa,libglvnd,xorg-xwayland,xkeyboard-config"
 PKG_BUILD_DEPS="gcc,meson,ninja,pkgconf,wayland-protocols,glslang,wayland,wlroots0.19,libxkbcommon,libinput,libdrm,libxcb,xcb-util-wm,pcre2,pixman,cjson,pango,mesa,libglvnd"
 PKG_BIN="usr/bin/mango,usr/bin/mmsg"
 
@@ -64,4 +64,22 @@ recipe_build() {
 	# mango's own meson install creates no usr/lib (only usr/bin/usr/share/etc), so mkdir it first.
 	mkdir -p "$app_dir/usr/lib"
 	cp -a "$sandbox_dir/usr/lib/libscenefx-0.4.so" "$app_dir/usr/lib/"
+
+	# mango's own config lookup (src/config/parse_config.h) checks
+	# $HOME/.config/mango/config.conf FIRST, falling back to the compiled-in
+	# SYSCONFDIR (/etc/mango/config.conf, a literal absolute path with no
+	# isolation awareness at all -- it's not derived from $HOME or any env
+	# var) only if that's missing. fau's own app_wrapper_write sets
+	# HOME="$app_dir" for the isolated app, so mango's PRIMARY lookup
+	# already lands somewhere real per-app -- it's just empty, since mango's
+	# own meson install only ever populates the SYSCONFDIR fallback
+	# ($app_dir/etc/mango/config.conf here), which the real system's actual
+	# /etc/mango/config.conf never matches. Found on a real `mango` run:
+	# "[ERROR]: Failed to open config file: /etc/mango/config.conf" even
+	# though a config.conf demonstrably existed right there under the app's
+	# own etc/. Fixed by also dropping the same default config at the path
+	# mango actually checks first -- no source patch needed, this was never
+	# the "needs patching mango itself" gap it looked like at a glance.
+	mkdir -p "$app_dir/.config/mango"
+	cp "$app_dir/etc/mango/config.conf" "$app_dir/.config/mango/config.conf"
 }
