@@ -1,0 +1,31 @@
+# dwm: dynamic window manager for X11 (AUR-only, suckless.org). Built via
+# `fau build dwm`. Scaffolded by tools/aur-to-fis (main FloraOS repo) from
+# the real AUR PKGBUILD, then hand-finished: recipe_build below is a direct
+# translation of that PKGBUILD's build()/package() (verified against the
+# real dwm-6.8 Makefile/config.mk, not guessed) -- PREFIX/X11INC/X11LIB/
+# FREETYPEINC overrides are copied as-is from the AUR PKGBUILD's own
+# build(), since config.mk's own defaults (PREFIX=/usr/local,
+# X11INC=/usr/X11R6/include) predate merged-/usr modern Linux layouts.
+PKG_SRC_URL="https://dl.suckless.org/dwm/dwm-6.8.tar.gz"
+PKG_SRC_SHA256="bcf540589ad174d4073f4efa658828411e2f5ba63196cfaf6b71363700f590b7"
+PKG_VERSION="6.8"
+PKG_DESCRIPTION="A dynamic window manager for X11 (suckless)"
+PKG_DEPENDS="glibc,libx11,libxinerama,libxft,freetype2"
+PKG_BUILD_DEPS="gcc,make,libx11,libxinerama,libxft,freetype2"
+PKG_BIN="usr/bin/dwm"
+
+recipe_source_for_version() {
+	local version=$1
+	echo "https://dl.suckless.org/dwm/dwm-${version}.tar.gz"
+	echo ""
+}
+
+recipe_build() {
+	local src=$1 app_dir=$2 sandbox_dir=$3
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		make X11INC=/usr/include/X11 X11LIB=/usr/lib/X11 FREETYPEINC=/usr/include/freetype2 -j"$jobs"
+		make PREFIX=/usr DESTDIR="$app_dir" install
+	)
+}
