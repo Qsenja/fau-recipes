@@ -29,10 +29,10 @@ PKG_VERSION="6.18.38"
 PKG_DESCRIPTION="Linux LTS kernel"
 PKG_NEEDS_DISK="1"
 PKG_DEPENDS="kmod"
-PKG_BUILD_DEPS="gcc,make,bison,flex,bc"
+PKG_BUILD_DEPS="gcc,make,bison,flex,bc,linux-api-headers"
 
 recipe_build() {
-	local src=$1 files=$2
+	local src=$1 files=$2 sandbox_dir=$3
 	local jobs; jobs=$(nproc)
 
 	# kbuild's own host tools (scripts/basic/fixdep, scripts/unifdef,
@@ -40,17 +40,21 @@ recipe_build() {
 	# <limits.h>/<errno.h>/etc, which transitively #include their
 	# linux/*.h counterparts -- confirmed missing from a live system's own
 	# /usr/include (same gap glibc.fis's own recipe already works around
-	# independently). This kernel provides its own copy via
-	# headers_install -- no separate fetch needed. HOSTCFLAGS must be
-	# passed on every make command line, not just exported: the top-level
-	# Makefile sets its own HOSTCFLAGS with `:=`, which overrides an
-	# inherited environment variable but not a command-line override --
-	# confirmed the hard way, an exported-only version got past defconfig
-	# fine (its host tools happened to compile first) but still failed
-	# later on scripts/unifdef during the main build.
-	local headers_dir; headers_dir=$(mktemp -d)
-	make -C "$src" ARCH=x86_64 INSTALL_HDR_PATH="$headers_dir" headers_install >/dev/null
-	local hostcflags="-idirafter $headers_dir/include"
+	# independently, by running its own headers_install). Tried that here
+	# too, but hit a chicken-and-egg problem: `headers_install` itself
+	# builds scripts/unifdef as one of its own prerequisites, before it
+	# has produced any sanitized output to point HOSTCFLAGS at. The raw,
+	# unprocessed kernel source tree headers don't fully solve it either
+	# (asm/errno.h etc need kbuild's own generic->arch header generation,
+	# not just present in the raw tree). Real fix: PKG_BUILD_DEPS above
+	# already pulls in linux-api-headers as one of gcc's own transitive
+	# alpm dependencies, sandbox-fetched -- Arch's own package ships fully
+	# generated headers, no kbuild step needed, so just point at that
+	# directly. Must be passed on every make command line, not just
+	# exported: the top-level Makefile sets its own HOSTCFLAGS with `:=`,
+	# which overrides an inherited environment variable but not a
+	# command-line override.
+	local hostcflags="-idirafter $sandbox_dir/usr/include"
 
 	log "linux-lts: configuring (defconfig)"
 	make -C "$src" ARCH=x86_64 HOSTCFLAGS="$hostcflags" defconfig >/dev/null
