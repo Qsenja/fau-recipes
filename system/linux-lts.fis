@@ -35,22 +35,25 @@ recipe_build() {
 	local src=$1 files=$2
 	local jobs; jobs=$(nproc)
 
-	# kbuild's own host tools (scripts/basic/fixdep, scripts/kconfig/conf,
-	# ...) compile against glibc's real <limits.h>, which transitively
-	# #includes <linux/limits.h> -- confirmed missing from a live system's
-	# own /usr/include (same gap glibc.fis's own recipe already works
-	# around independently, for the same underlying reason: raw kernel
-	# UAPI headers are never merged into the real rootfs). Needed from the
-	# very first `make defconfig` onward, not just at the final build
-	# step, since kconfig's own host tools compile then too. This kernel
-	# provides its own copy via headers_install -- no separate fetch
-	# needed, unlike glibc.fis which has no kernel source of its own to draw on.
+	# kbuild's own host tools (scripts/basic/fixdep, scripts/unifdef,
+	# scripts/kconfig/conf, objtool, ...) compile against glibc's real
+	# <limits.h>/<errno.h>/etc, which transitively #include their
+	# linux/*.h counterparts -- confirmed missing from a live system's own
+	# /usr/include (same gap glibc.fis's own recipe already works around
+	# independently). This kernel provides its own copy via
+	# headers_install -- no separate fetch needed. HOSTCFLAGS must be
+	# passed on every make command line, not just exported: the top-level
+	# Makefile sets its own HOSTCFLAGS with `:=`, which overrides an
+	# inherited environment variable but not a command-line override --
+	# confirmed the hard way, an exported-only version got past defconfig
+	# fine (its host tools happened to compile first) but still failed
+	# later on scripts/unifdef during the main build.
 	local headers_dir; headers_dir=$(mktemp -d)
 	make -C "$src" ARCH=x86_64 INSTALL_HDR_PATH="$headers_dir" headers_install >/dev/null
-	export HOSTCFLAGS="-idirafter $headers_dir/include"
+	local hostcflags="-idirafter $headers_dir/include"
 
 	log "linux-lts: configuring (defconfig)"
-	make -C "$src" ARCH=x86_64 defconfig >/dev/null
+	make -C "$src" ARCH=x86_64 HOSTCFLAGS="$hostcflags" defconfig >/dev/null
 
 	# GUI-readiness config -- see docs/MANIFEST.md and the original
 	# scripts/recipes/linux-lts.sh for the full reasoning behind each of
@@ -77,10 +80,10 @@ recipe_build() {
 	# isn't needed before userspace is up, so it doesn't need to be built in --
 	# eudev's real --enable-kmod loads it via modalias the same as any other
 	# PCI device driver module.
-	make -C "$src" ARCH=x86_64 olddefconfig >/dev/null
+	make -C "$src" ARCH=x86_64 HOSTCFLAGS="$hostcflags" olddefconfig >/dev/null
 
 	log "linux-lts: building (this is the longest single step, -j$jobs)"
-	make -C "$src" ARCH=x86_64 -j"$jobs" bzImage modules >/dev/null
+	make -C "$src" ARCH=x86_64 HOSTCFLAGS="$hostcflags" -j"$jobs" bzImage modules >/dev/null
 
 	mkdir -p "$files/boot" "$files/lib/modules"
 	cp "$src/arch/x86/boot/bzImage" "$files/boot/vmlinuz-floraos"
