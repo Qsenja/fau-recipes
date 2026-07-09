@@ -16,10 +16,18 @@
 # hook: depmod needs to run against the *merged* module tree
 # (/usr/lib/modules/<kernelrelease>), not the sandbox's staged output,
 # so it can't happen inside recipe_build.
+#
+# PKG_NEEDS_DISK=1: the one recipe (so far) that opts out of running on a
+# live/RAM system at all, not just "risky there" -- the live image's
+# actual running kernel is loaded straight off the boot media, never from
+# a path this rebuild touches, so it would burn a long build for
+# literally zero effect, not just an unsafe one. Most packages don't set
+# this and update fine on a live system with no snapshot to fall back to.
 PKG_SRC_URL="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.38.tar.xz"
 PKG_SRC_SHA256="ac26e508abd56e9f8b89872b6e10c49fc823bcc70d8068a5d8504c1a7c4ff045"
 PKG_VERSION="6.18.38"
 PKG_DESCRIPTION="Linux LTS kernel"
+PKG_NEEDS_DISK="1"
 PKG_DEPENDS="kmod"
 PKG_BUILD_DEPS="gcc,make,bison,flex,bc"
 
