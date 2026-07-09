@@ -1,0 +1,91 @@
+# tor-browser: anonymous browsing using Firefox and Tor (torproject.org).
+# AUR-only, as `tor-browser-bin`. Built via `fau build tor-browser`.
+#
+# Deliberately NOT a port of AUR's own tor-browser-bin PKGBUILD, even
+# though it exists: that PKGBUILD is genuinely unusual among every AUR
+# package looked at this way so far -- its sha256sums_x86_64 is a live
+# $(_dist_checksum ...) shell function that curls the Tor Project's own
+# published checksum file at build time (never a hardcoded hash at all,
+# confirmed directly against the real PKGBUILD text), and its package()
+# doesn't even extract the downloaded tarball -- it stores the pristine
+# .tar.xz itself under $pkgdir/opt/tor-browser/ (see its own `noextract=`)
+# for a template-generated wrapper script to self-extract on first run.
+# None of that is safe or sensible to mechanically translate. Tor
+# Browser's own official upstream tarball is already a fully self-
+# contained, ready-to-run bundle (this is literally how the Tor Project
+# tells every Linux user to install it, packaging systems aside) with one
+# common wrapping directory -- confirmed directly: `tar -tf` lists
+# everything under a single "tor-browser/" prefix, so (unlike opencode's
+# own release asset) build_extract_source's default --strip-components=1
+# path works correctly here with no special handling needed.
+#
+# PKG_DEPENDS was verified via readelf -d against the real bundled
+# Browser/libxul.so (the actual browser engine `Browser/firefox.real`
+# dlopens) -- most of libxul's own NEEDED entries (libnss3.so, libssl3.so,
+# libmozgtk.so, libmozsandbox.so, ...) are bundled right there in Browser/
+# itself, found via the same directory search fau's own app_wrapper_write
+# already sets up (nested_libdirs); only the genuinely-external system
+# libraries below are listed.
+#
+# PKG_BUILD_DEPS="xz": the outer tarball itself is .xz-compressed --
+# gzip/zstd are already base-system tools (see fau.md), xz/liblzma isn't.
+PKG_SRC_URL="https://archive.torproject.org/tor-package-archive/torbrowser/15.0.17/tor-browser-linux-x86_64-15.0.17.tar.xz"
+PKG_SRC_SHA256="58914377e0d58f8a0a1e3bfba72df256bb6daeb08715c1c96f2bcb34ec028e1b"
+PKG_VERSION="15.0.17"
+PKG_DESCRIPTION="Anonymous browsing using Firefox and Tor (prebuilt upstream release)"
+PKG_DEPENDS="glibc,gcc-libs,alsa-lib,freetype2,fontconfig,gtk3,pango,at-spi2-core,cairo,gdk-pixbuf2,glib2,dbus,libxcb,libx11,libxext,libxrandr"
+PKG_BUILD_DEPS="xz"
+PKG_BIN="usr/bin/tor-browser"
+
+recipe_source_for_version() {
+	local version=$1
+	echo "https://archive.torproject.org/tor-package-archive/torbrowser/${version}/tor-browser-linux-x86_64-${version}.tar.xz"
+	echo ""
+}
+
+recipe_build() {
+	local src=$1 app_dir=$2 sandbox_dir=$3
+
+	local libdir="$app_dir/usr/lib/tor-browser"
+	mkdir -p "$libdir"
+	cp -a "$src/." "$libdir/"
+
+	# Browser/start-tor-browser resolves its own location via `readlink -f
+	# "$0"` + `cd "$(dirname ...)"` (confirmed directly reading the real
+	# script), so a plain absolute-path wrapper works regardless of CWD --
+	# no --no-sandbox-style workaround needed here: Firefox's own sandbox
+	# is seccomp-bpf/namespace-based, not the setuid-helper-binary design
+	# Chromium/Electron uses (see vesktop.fis/opencode-desktop.fis/
+	# cursor.fis's own --no-sandbox comments for that contrast).
+	mkdir -p "$app_dir/usr/bin"
+	cat > "$app_dir/usr/bin/tor-browser" <<-EOF
+	#!/bin/sh
+	exec "$libdir/Browser/start-tor-browser" "\$@"
+	EOF
+	chmod 755 "$app_dir/usr/bin/tor-browser"
+
+	# Real Tor Browser/Firefox icon set, already shipped at exactly these
+	# sizes under Browser/browser/chrome/icons/default/.
+	local size icon_src
+	for size in 16 32 48 64 128; do
+		icon_src="$libdir/Browser/browser/chrome/icons/default/default${size}.png"
+		[ -f "$icon_src" ] || continue
+		mkdir -p "$app_dir/usr/share/icons/hicolor/${size}x${size}/apps"
+		cp "$icon_src" "$app_dir/usr/share/icons/hicolor/${size}x${size}/apps/tor-browser.png"
+	done
+
+	mkdir -p "$app_dir/usr/share/applications"
+	cat > "$app_dir/usr/share/applications/tor-browser.desktop" <<-EOF
+	[Desktop Entry]
+	Type=Application
+	Name=Tor Browser
+	GenericName=Web Browser
+	Comment=Anonymous browsing using Firefox and Tor
+	Exec=tor-browser %U
+	Icon=tor-browser
+	Terminal=false
+	Categories=Network;WebBrowser;Security;
+	StartupNotify=true
+	StartupWMClass=Tor Browser
+	EOF
+}
