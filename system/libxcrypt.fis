@@ -1,0 +1,25 @@
+# libxcrypt -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/libxcrypt.sh + config/versions.conf. See
+# tools/fau/fau.md's "fau update also sweeps base system packages"
+# section. Rebuilding this live is riskier than most: floralogin and
+# florauser both link against it for crypt(3); a broken build here breaks
+# login until the next successful update or a rebuilt ISO.
+PKG_SRC_URL="https://github.com/besser82/libxcrypt/releases/download/v4.5.2/libxcrypt-4.5.2.tar.xz"
+PKG_SRC_SHA256="71513a31c01a428bccd5367a32fd95f115d6dac50fb5b60c779d5c7942aec071"
+PKG_VERSION="4.5.2"
+PKG_DESCRIPTION="crypt(3) password hashing (glibc dropped it; this is the standard replacement)"
+PKG_DEPENDS="glibc"
+PKG_BUILD_DEPS="gcc,make"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		./configure --prefix=/usr --disable-static --disable-werror \
+			--enable-obsolete-api=glibc --enable-hashes=strong,glibc
+		make -j"$jobs"
+		make DESTDIR="$files" install
+	)
+}

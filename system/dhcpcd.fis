@@ -1,0 +1,22 @@
+# dhcpcd -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/dhcpcd.sh + config/versions.conf. See tools/fau/fau.md's
+# "fau update also sweeps base system packages" section.
+PKG_SRC_URL="https://github.com/NetworkConfiguration/dhcpcd/archive/refs/tags/v10.3.2.tar.gz"
+PKG_SRC_SHA256="fa9aa4867e2cd5d1551bf93e34fb8ed6891702448df8a71afffab067ceb66a4f"
+PKG_VERSION="10.3.2"
+PKG_DESCRIPTION="DHCP client for base networking"
+PKG_DEPENDS="glibc,libmd"
+PKG_BUILD_DEPS="gcc,make"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		./configure --prefix=/usr --sbindir=/usr/sbin \
+			--dbdir=/var/lib/dhcpcd --rundir=/run
+		make -j"$jobs"
+		make DESTDIR="$files" install
+	)
+}

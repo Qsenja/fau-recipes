@@ -8,6 +8,7 @@ PKG_SRC_SHA256="5bb5d1be011158090157c9e7587ae5606c262a5020ecdc5caac6686b9910592e
 PKG_VERSION="3.25"
 PKG_DESCRIPTION="hostname/dnsdomainname -- sets/prints the system hostname"
 PKG_DEPENDS="glibc"
+PKG_BUILD_DEPS="gcc,make"
 
 recipe_build() {
 	local src=$1 files=$2

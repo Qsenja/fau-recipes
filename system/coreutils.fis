@@ -1,0 +1,24 @@
+# coreutils -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/coreutils.sh + config/versions.conf. See
+# tools/fau/fau.md's "fau update also sweeps base system packages" section.
+PKG_SRC_URL="https://ftp.gnu.org/gnu/coreutils/coreutils-9.11.tar.xz"
+PKG_SRC_SHA256="394024eda0a5955217ceda9cd1201e65dc8fa3aa29c2951135a49521d57c3cc3"
+PKG_VERSION="9.11"
+PKG_DESCRIPTION="GNU core utilities"
+PKG_DEPENDS="glibc"
+PKG_BUILD_DEPS="gcc,make"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		./configure --prefix=/usr \
+			--disable-libcap \
+			--without-libgmp \
+			--with-openssl=no
+		make -j"$jobs"
+		make DESTDIR="$files" install
+	)
+}

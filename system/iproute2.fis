@@ -1,0 +1,22 @@
+# iproute2 -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/iproute2.sh + config/versions.conf. See
+# tools/fau/fau.md's "fau update also sweeps base system packages" section.
+PKG_SRC_URL="https://www.kernel.org/pub/linux/utils/net/iproute2/iproute2-7.1.0.tar.xz"
+PKG_SRC_SHA256="fd9fa1b95809417157ca83dd72957e3261bdbce896353cb936f80af0b33a4b5c"
+PKG_VERSION="7.1.0"
+PKG_DESCRIPTION="ip/ss/tc, manual interface and routing configuration"
+PKG_DEPENDS="glibc"
+PKG_BUILD_DEPS="gcc,make"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		# hides pkg-config search path so auto-detected libtirpc (unshipped) doesn't get linked
+		PKG_CONFIG_LIBDIR=/nonexistent PKG_CONFIG_PATH= ./configure
+		make -j"$jobs"
+		make DESTDIR="$files" PREFIX=/usr install
+	)
+}

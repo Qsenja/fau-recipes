@@ -7,6 +7,7 @@ PKG_SRC_SHA256="01a7b881bd220bfdf615f97b8718f80bdfd3f6add385b993dcf6efd14e8c0ac6
 PKG_VERSION="1.14"
 PKG_DESCRIPTION="GNU gzip -- lets kbd's loadkeys/dumpkeys decompress .gz keymaps/fonts directly"
 PKG_DEPENDS="glibc"
+PKG_BUILD_DEPS="gcc,make"
 
 recipe_build() {
 	local src=$1 files=$2

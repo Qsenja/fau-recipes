@@ -1,0 +1,21 @@
+# libacl (POSIX ACLs) -- FloraOS base-system package, live-rebuildable via
+# `fau bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/acl.sh + config/versions.conf. See tools/fau/fau.md's
+# "fau update also sweeps base system packages" section.
+PKG_SRC_URL="https://download.savannah.nongnu.org/releases/acl/acl-2.4.0.tar.xz"
+PKG_SRC_SHA256="e661131456d2708a01c614a0f400e11d7d1bfaeb6f3e74b75bb980b72f0161a3"
+PKG_VERSION="2.4.0"
+PKG_DESCRIPTION="POSIX ACL library (libacl), auto-linked by gnulib-based tools"
+PKG_DEPENDS="glibc,attr"
+PKG_BUILD_DEPS="gcc,make"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		./configure --prefix=/usr --disable-static
+		make -j"$jobs"
+		make DESTDIR="$files" install
+	)
+}

@@ -1,0 +1,21 @@
+# libattr (extended attributes) -- FloraOS base-system package,
+# live-rebuildable via `fau bootstrap-build`. Translated from the main
+# FloraOS repo's scripts/recipes/attr.sh + config/versions.conf. See
+# tools/fau/fau.md's "fau update also sweeps base system packages" section.
+PKG_SRC_URL="https://download.savannah.nongnu.org/releases/attr/attr-2.6.0.tar.xz"
+PKG_SRC_SHA256="6c8a2148a7b85043b68492bce43316b0e2e214fc4e628c7ede078e76e216330b"
+PKG_VERSION="2.6.0"
+PKG_DESCRIPTION="extended attributes library (libattr), auto-linked by gnulib-based tools"
+PKG_DEPENDS="glibc"
+PKG_BUILD_DEPS="gcc,make"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		./configure --prefix=/usr --disable-static
+		make -j"$jobs"
+		make DESTDIR="$files" install
+	)
+}

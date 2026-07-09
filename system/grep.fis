@@ -1,0 +1,22 @@
+# GNU grep -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/grep.sh + config/versions.conf. See tools/fau/fau.md's
+# "fau update also sweeps base system packages" section.
+PKG_SRC_URL="https://ftp.gnu.org/gnu/grep/grep-3.12.tar.xz"
+PKG_SRC_SHA256="2649b27c0e90e632eadcd757be06c6e9a4f48d941de51e7c0f83ff76408a07b9"
+PKG_VERSION="3.12"
+PKG_DESCRIPTION="GNU grep"
+PKG_DEPENDS="glibc"
+PKG_BUILD_DEPS="gcc,make"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		# --disable-perl-regexp: avoids libpcre2; fau only ever uses grep -oE, never -P
+		./configure --prefix=/usr --disable-perl-regexp
+		make -j"$jobs"
+		make DESTDIR="$files" install
+	)
+}

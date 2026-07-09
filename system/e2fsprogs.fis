@@ -1,0 +1,34 @@
+# e2fsprogs -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/e2fsprogs.sh + config/versions.conf. See
+# tools/fau/fau.md's "fau update also sweeps base system packages"
+# section. Out-of-tree build via a throwaway mktemp dir, same as the
+# original recipe's own $BUILD_DIR/e2fsprogs-build -- that global doesn't
+# exist outside scripts/build-rootfs.sh, so a plain mktemp -d substitutes.
+PKG_SRC_URL="https://www.kernel.org/pub/linux/kernel/people/tytso/e2fsprogs/v1.47.4/e2fsprogs-1.47.4.tar.xz"
+PKG_SRC_SHA256="fd5bf388cbdbe006a3d3b318d983b2948382440acc85a87f1e7d108653e8db0b"
+PKG_VERSION="1.47.4"
+PKG_DESCRIPTION="ext2/3/4 filesystem tools (mkfs.ext4, fsck.ext4)"
+PKG_DEPENDS="glibc,util-linux"
+PKG_BUILD_DEPS="gcc,make"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	local build_dir; build_dir=$(mktemp -d)
+	(
+		cd "$build_dir"
+		"$src/configure" --prefix=/usr \
+			--enable-elf-shlibs \
+			--disable-libblkid \
+			--disable-libuuid \
+			--disable-fsck \
+			--disable-fuse2fs
+		make -j"$jobs"
+		make DESTDIR="$files" install
+
+		# cramfs tools need libz, which FloraOS doesn't ship -- see docs/MANIFEST.md
+		rm -f "$files/usr/sbin/fsck.cramfs" "$files/usr/sbin/mkfs.cramfs"
+	)
+	rm -rf "$build_dir"
+}

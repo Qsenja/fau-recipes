@@ -1,0 +1,24 @@
+# mbedtls -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/mbedtls.sh + config/versions.conf. See tools/fau/fau.md's
+# "fau update also sweeps base system packages" section.
+PKG_SRC_URL="https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.6/mbedtls-3.6.6.tar.bz2"
+PKG_SRC_SHA256="8fb65fae8dcae5840f793c0a334860a411f884cc537ea290ce1c52bb64ca007a"
+PKG_VERSION="3.6.6"
+PKG_DESCRIPTION="TLS library, curl's TLS backend (no pacman.d/mirrorlist fetch works without it)"
+PKG_DEPENDS="glibc"
+PKG_BUILD_DEPS="gcc,make"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		# build only "lib", not "install": avoids unconditionally building mbedTLS's example/test/fuzz programs
+		make -j"$jobs" SHARED=1 lib
+		mkdir -p "$files/usr/include" "$files/usr/lib"
+		cp -rp include/mbedtls "$files/usr/include/"
+		cp -rp include/psa "$files/usr/include/"
+		cp -RP library/libmbedtls.* library/libmbedx509.* library/libmbedcrypto.* "$files/usr/lib/"
+	)
+}

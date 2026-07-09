@@ -1,0 +1,26 @@
+# bash -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/bash.sh + config/versions.conf. See tools/fau/fau.md's
+# "fau update also sweeps base system packages" section. Safe to rebuild
+# while a bash process is the very interpreter running this: cmd_bootstrap_
+# build's rsync merge has no --inplace, so it writes the new binary to a
+# temp file and renames over the old one -- the already-running process
+# keeps its own open copy of the old inode until it exits, same reasoning
+# as fau-install replacing itself (see fau.md).
+PKG_SRC_URL="https://ftp.gnu.org/gnu/bash/bash-5.3.tar.gz"
+PKG_SRC_SHA256="0d5cd86965f869a26cf64f4b71be7b96f90a3ba8b3d74e27e8e9d9d5550f31ba"
+PKG_VERSION="5.3"
+PKG_DESCRIPTION="GNU Bourne Again Shell"
+PKG_DEPENDS="glibc,ncurses"
+PKG_BUILD_DEPS="gcc,make"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		./configure --prefix=/usr --without-bash-malloc
+		make -j"$jobs"
+		make DESTDIR="$files" install
+	)
+}

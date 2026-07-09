@@ -7,6 +7,7 @@ PKG_SRC_SHA256="4d62ff37342ec7aed748535323930c7cf94acf71c3591882b26a7ea50f3edc16
 PKG_VERSION="1.35"
 PKG_DESCRIPTION="GNU tar"
 PKG_DEPENDS="glibc"
+PKG_BUILD_DEPS="gcc,make"
 
 recipe_build() {
 	local src=$1 files=$2

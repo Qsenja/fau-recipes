@@ -1,0 +1,28 @@
+# procps-ng -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/procps-ng.sh + config/versions.conf. See
+# tools/fau/fau.md's "fau update also sweeps base system packages"
+# section. Needs the full autotools chain (autoreconf -fi), unlike every
+# other recipe in this namespace so far -- PKG_BUILD_DEPS reflects that.
+PKG_SRC_URL="https://gitlab.com/procps-ng/procps/-/archive/v4.0.6/procps-v4.0.6.tar.gz"
+PKG_SRC_SHA256="1bbe8ff21dcd05a6adcda99a67d2e99cbd515c9e3a78fd3cc915b12aeb330d40"
+PKG_VERSION="4.0.6"
+PKG_DESCRIPTION="sysctl/ps/top/kill/free, /proc-based process and system utilities"
+PKG_DEPENDS="glibc,ncurses"
+PKG_BUILD_DEPS="gcc,make,autoconf,automake,libtool,pkgconf,m4"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		# strips po/po-man before autoreconf -- see docs/MANIFEST.md
+		sed -i '/^\tpo-man \\$/d; /^\tpo \\$/d' Makefile.am
+		sed -i '/^\s*po-man\/Makefile\s*$/d; /^\s*po\/Makefile\.in\s*$/d' configure.ac
+		sed -i '/^AM_GNU_GETTEXT_VERSION/d; /^AM_GNU_GETTEXT(\[external\])/d' configure.ac
+		autoreconf -fi
+		./configure --prefix=/usr --disable-nls
+		make -j"$jobs"
+		make DESTDIR="$files" install
+	)
+}

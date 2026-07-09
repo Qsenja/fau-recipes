@@ -7,6 +7,7 @@ PKG_SRC_SHA256="ac15ffb8430502fbaccdec66c5a82ee0eab0b0f36220df56710feadfeb13d0a0
 PKG_VERSION="1.2.0"
 PKG_DESCRIPTION="BSD message-digest library -- dhcpcd links against it, no way to disable"
 PKG_DEPENDS="glibc"
+PKG_BUILD_DEPS="gcc,make"
 
 recipe_build() {
 	local src=$1 files=$2
