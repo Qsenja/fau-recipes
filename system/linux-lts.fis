@@ -29,7 +29,7 @@ PKG_VERSION="6.18.38"
 PKG_DESCRIPTION="Linux LTS kernel"
 PKG_NEEDS_DISK="1"
 PKG_DEPENDS="kmod"
-PKG_BUILD_DEPS="gcc,make,bison,flex,bc,linux-api-headers"
+PKG_BUILD_DEPS="gcc,make,bison,flex,bc,linux-api-headers,m4"
 
 recipe_build() {
 	local src=$1 files=$2 sandbox_dir=$3
@@ -61,8 +61,12 @@ recipe_build() {
 	# wherever its own binary happens to be found on PATH -- the sandbox's
 	# bison package does ship these files, just not at that absolute
 	# path. BISON_PKGDATADIR is bison's own documented override for
-	# exactly this (relocatable-install) situation.
+	# exactly this (relocatable-install) situation. Same story for the
+	# actual m4 binary bison shells out to (hardcoded fallback
+	# /usr/bin/m4, confirmed via strings on the binary) -- M4 is bison's
+	# own override for that.
 	export BISON_PKGDATADIR="$sandbox_dir/usr/share/bison"
+	export M4="$sandbox_dir/usr/bin/m4"
 
 	log "linux-lts: configuring (defconfig)"
 	make -C "$src" ARCH=x86_64 HOSTCFLAGS="$hostcflags" defconfig >/dev/null
