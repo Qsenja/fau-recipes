@@ -1,0 +1,90 @@
+# vesktop: cross-platform Discord client with Vencord pre-installed
+# (Vencord/Vesktop, AUR-only as `vesktop-bin`/`vesktop`). Built via `fau
+# build vesktop`.
+#
+# This is NOT a from-source compile like dwm.fis/mangowm.fis -- Vesktop is
+# Electron, and Electron itself is never actually "compiled" by anything
+# that builds it, upstream included: electron-builder's own packaging step
+# just downloads a prebuilt Electron/Chromium runtime and drops the app's
+# JS on top of it. Doing that "for real" here would mean bootstrapping a
+# whole Node.js/pnpm toolchain and an npm-scale dependency tree this
+# project carries nowhere else, purely to re-derive the exact same
+# prebuilt Chromium binary Vencord's own CI already publishes directly.
+# So PKG_SRC_URL below points straight at upstream's own generic-Linux
+# `vesktop-<ver>.tar.gz` release asset (the self-contained bundle: the
+# `vesktop` ELF, its bundled libffmpeg/libEGL/libGLESv2/libvulkan/
+# libvk_swiftshader .so's, chrome-sandbox, resources/app.asar, locales/,
+# *.pak, icudtl.dat, v8/snapshot blobs) -- pinned and checksummed exactly
+# like any other recipe's source tarball, just not source code.
+#
+# **The bundle must stay intact as one directory, not get split up.**
+# Electron resolves resources/, locales/, the *.pak files, icudtl.dat, and
+# its own bundled .so's relative to its own executable's directory
+# (dirname(process.execPath)), not via any search path or env var -- so
+# recipe_build below copies the whole extracted tree verbatim into
+# usr/lib/vesktop/ rather than picking out "the binary" and discarding the
+# rest the way a real ELF-only recipe would.
+#
+# PKG_BIN is a tiny shell shim at usr/bin/vesktop, not the real ELF
+# (compare dwm.fis/mangowm.fis, where PKG_BIN names the actual built
+# binary) -- see the --no-sandbox note in recipe_build for why.
+PKG_SRC_URL="https://github.com/Vencord/Vesktop/releases/download/v1.6.5/vesktop-1.6.5.tar.gz"
+PKG_SRC_SHA256="a2d1fc9a0c94cd0b47c9ed9240d23d126410894a58f25f9425aad8f02871565d"
+PKG_VERSION="1.6.5"
+PKG_DESCRIPTION="Cross-platform Discord client with Vencord pre-installed (Electron, prebuilt upstream release)"
+PKG_DEPENDS="glibc,gcc-libs,eudev,glib2,nspr,nss,dbus,at-spi2-core,libcups,cairo,gtk3,pango,libx11,libxcomposite,libxdamage,libxext,libxfixes,libxrandr,mesa,expat,libxcb,libxkbcommon,alsa-lib"
+PKG_BUILD_DEPS=""
+PKG_BIN="usr/bin/vesktop"
+
+recipe_source_for_version() {
+	local version=$1
+	echo "https://github.com/Vencord/Vesktop/releases/download/v${version}/vesktop-${version}.tar.gz"
+	echo ""
+}
+
+recipe_build() {
+	local src=$1 app_dir=$2 sandbox_dir=$3
+
+	local libdir="$app_dir/usr/lib/vesktop"
+	mkdir -p "$libdir"
+	cp -a "$src/." "$libdir/"
+
+	# Real Chromium sandboxing needs chrome-sandbox owned by root with the
+	# setuid bit set -- not something a `fau build`, running unprivileged
+	# and installing into a per-user-isolated app_dir, can ever set up (no
+	# root chroot/install step exists in this model at all, see
+	# docs/ARCHITECTURE.md). `--no-sandbox` is Electron/Chromium's own
+	# documented escape hatch for exactly this situation (the same flag
+	# every rootless-container Electron deployment needs), so the real
+	# binary is never exposed directly as PKG_BIN -- this shim in front of
+	# it is the actual fix, not a workaround bolted on afterward.
+	mkdir -p "$app_dir/usr/bin"
+	cat > "$app_dir/usr/bin/vesktop" <<-EOF
+	#!/bin/sh
+	exec "$libdir/vesktop" --no-sandbox "\$@"
+	EOF
+	chmod 755 "$app_dir/usr/bin/vesktop"
+
+	# icon.svg isn't in the generic tar.gz at all (only the .deb/.rpm carry
+	# desktop-integration assets) -- fetched separately, straight from the
+	# tagged source repo, same as mangowm.fis fetches its own extra
+	# scenefx dependency via a second build_fetch_source call.
+	local icon; icon=$(build_fetch_source \
+		"https://raw.githubusercontent.com/Vencord/Vesktop/v${PKG_VERSION}/build/icon.svg" \
+		"7d0f9dbdb3c86f800577d7fb26a22defeb7025d10c405f634d3c2b939a75be7f")
+	mkdir -p "$app_dir/usr/share/icons/hicolor/scalable/apps"
+	cp "$icon" "$app_dir/usr/share/icons/hicolor/scalable/apps/vesktop.svg"
+
+	mkdir -p "$app_dir/usr/share/applications"
+	cat > "$app_dir/usr/share/applications/vesktop.desktop" <<-EOF
+	[Desktop Entry]
+	Name=Vesktop
+	Comment=Discord client with Vencord pre-installed
+	Exec=vesktop
+	Icon=vesktop
+	Terminal=false
+	Type=Application
+	Categories=Network;InstantMessaging;Chat;
+	StartupWMClass=Vesktop
+	EOF
+}
