@@ -47,7 +47,7 @@ recipe_build() {
 	# needed, unlike glibc.fis which has no kernel source of its own to draw on.
 	local headers_dir; headers_dir=$(mktemp -d)
 	make -C "$src" ARCH=x86_64 INSTALL_HDR_PATH="$headers_dir" headers_install >/dev/null
-	export HOSTCFLAGS="-I$headers_dir/include"
+	export HOSTCFLAGS="-idirafter $headers_dir/include"
 
 	log "linux-lts: configuring (defconfig)"
 	make -C "$src" ARCH=x86_64 defconfig >/dev/null
