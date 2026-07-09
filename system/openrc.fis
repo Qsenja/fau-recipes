@@ -1,0 +1,27 @@
+# openrc -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/openrc.sh + config/versions.conf. See
+# tools/fau/fau.md's "fau update also sweeps base system packages" section.
+# The sed patch below is a compile-time preprocessor guard
+# (__GLIBC_PREREQ, evaluated by the compiler against whatever glibc
+# headers are present at build time) -- it does NOT need glibc's
+# installed *version* checked at recipe-run time, contrary to an earlier
+# pass at docs/TODO.md.
+PKG_SRC_URL="https://github.com/OpenRC/openrc/archive/refs/tags/openrc-0.13.11.tar.gz"
+PKG_SRC_SHA256="56fb04814d5bbe509bd1b7942cb9efbff5fca852ec7505b6ea92ea657a9646e7"
+PKG_VERSION="0.13.11"
+PKG_DESCRIPTION="dependency-based service/runlevel manager"
+PKG_DEPENDS="glibc,sysvinit"
+PKG_BUILD_DEPS="gcc,make"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		sed -i 's/^#ifdef __GLIBC__$/#if defined(__GLIBC__) \&\& !__GLIBC_PREREQ(2, 38)/' \
+			src/libeinfo/libeinfo.c
+		make -j"$jobs" CFLAGS="-fcommon -O2 -g"
+		make DESTDIR="$files" install
+	)
+}

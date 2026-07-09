@@ -1,0 +1,34 @@
+# curl -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/curl.sh + config/versions.conf. See
+# tools/fau/fau.md's "fau update also sweeps base system packages" section.
+# --with-mbedtls pointed at mbedtls's *staged* build output
+# ($STAGE_DIR/mbedtls/files/usr), a build-host-only concept -- on a live
+# system mbedtls is already installed at the real /usr (confirmed:
+# libmbedtls.* and usr/include/mbedtls are really there in a built
+# rootfs), so this points there directly instead.
+PKG_SRC_URL="https://curl.se/download/curl-8.21.0.tar.xz"
+PKG_SRC_SHA256="aa1b66a70eace83dc624508745646c08ae561de512ab403adffb93ac87fc72e6"
+PKG_VERSION="8.21.0"
+PKG_DESCRIPTION="HTTP client -- fau's alpm (Arch/Artix repo) fallback needs it to fetch anything after boot"
+PKG_DEPENDS="glibc,mbedtls,zstd"
+PKG_BUILD_DEPS="gcc,make"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		./configure --prefix=/usr \
+			--with-mbedtls=/usr \
+			--with-ca-bundle=/etc/ssl/certs/ca-certificates.crt \
+			--disable-static \
+			--disable-ldap --disable-ldaps \
+			--disable-ftp --disable-file --disable-ipfs --disable-rtsp --disable-dict \
+			--disable-telnet --disable-tftp --disable-pop3 --disable-imap --disable-smtp \
+			--disable-gopher --disable-mqtt \
+			--without-zlib --without-brotli --without-libpsl --without-libidn2 --without-nghttp2
+		make -j"$jobs"
+		make DESTDIR="$files" install
+	)
+}

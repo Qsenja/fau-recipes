@@ -1,0 +1,36 @@
+# eudev -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/eudev.sh + config/versions.conf. See
+# tools/fau/fau.md's "fau update also sweeps base system packages" section.
+# The build-host recipe points PKG_CONFIG_LIBDIR at kmod's *staged*
+# build output ($STAGE_DIR/kmod/files/usr/lib/pkgconfig), a build-host-only
+# concept -- on a live system kmod is already installed at the real
+# /usr/lib/pkgconfig (confirmed: kmod.pc is really there in a built
+# rootfs), so this points there directly instead. pkg-config/pkgconf
+# itself is a build tool only, confirmed NOT part of the merged system,
+# so it's sandbox-fetched via PKG_BUILD_DEPS like gcc/make.
+PKG_SRC_URL="https://github.com/eudev-project/eudev/releases/download/v3.2.14/eudev-3.2.14.tar.gz"
+PKG_SRC_SHA256="8da4319102f24abbf7fff5ce9c416af848df163b29590e666d334cc1927f006f"
+PKG_VERSION="3.2.14"
+PKG_DESCRIPTION="systemd-free udev fork -- device nodes/perms/hotplug for libinput and friends"
+PKG_DEPENDS="glibc,kmod"
+PKG_BUILD_DEPS="gcc,make,pkgconf"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		PKG_CONFIG=pkg-config \
+		PKG_CONFIG_LIBDIR="/usr/lib/pkgconfig" PKG_CONFIG_PATH= \
+		./configure --prefix=/usr --exec-prefix=/usr \
+			--bindir=/usr/bin --sbindir=/usr/bin \
+			--libdir=/usr/lib --sysconfdir=/etc \
+			--with-rootprefix=/usr --with-rootlibdir=/usr/lib \
+			--enable-kmod \
+			--disable-blkid --disable-selinux \
+			--disable-manpages --disable-static
+		make -j"$jobs"
+		make DESTDIR="$files" install
+	)
+}

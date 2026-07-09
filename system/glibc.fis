@@ -1,0 +1,66 @@
+# glibc -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/glibc.sh + config/versions.conf. See
+# tools/fau/fau.md's "fau update also sweeps base system packages" section.
+#
+# The build-host recipe points --with-headers at $LINUX_HEADERS_DIR, a
+# standing artifact only the ISO build's own linux-lts step produces
+# (linux-lts's headers_install output, never merged into the real
+# rootfs). Checked, not assumed: a real built rootfs's /usr/include has
+# no linux/ or asm/ subdirectory at all -- there's nothing on a live
+# system to point --with-headers at. This recipe is self-contained
+# instead: it fetches the same kernel source linux-lts.fis builds from
+# and runs headers_install itself, into a throwaway dir, every time. A
+# few extra seconds of redundant download/extract, but no dependency on
+# linux-lts having been converted, installed, or even present -- glibc's
+# own rebuild never depends on another package's rebuild succeeding
+# first.
+PKG_SRC_URL="https://ftp.gnu.org/gnu/glibc/glibc-2.43.tar.xz"
+PKG_SRC_SHA256="d9c86c6b5dbddb43a3e08270c5844fc5177d19442cf5b8df4be7c07cd5fa3831"
+PKG_VERSION="2.43"
+PKG_DESCRIPTION="GNU C library -- every other package on this system links against it"
+PKG_DEPENDS=""
+PKG_BUILD_DEPS="gcc,make"
+
+# Same pin as fau-recipes/system/linux-lts.fis -- kept in sync by hand
+# (headers_install doesn't need the kernel to be buildable/bootable,
+# just its source tree, so this doesn't need linux-lts's recipe at all,
+# only the same tarball).
+_KERNEL_SRC_URL="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.38.tar.xz"
+_KERNEL_SRC_SHA256="ac26e508abd56e9f8b89872b6e10c49fc823bcc70d8068a5d8504c1a7c4ff045"
+
+recipe_build() {
+	local src=$1 files=$2 sandbox_dir=$3
+	local jobs; jobs=$(nproc)
+
+	log "glibc: fetching kernel source for headers_install (not for building/booting a kernel)"
+	local kernel_tarball; kernel_tarball=$(build_fetch_source "$_KERNEL_SRC_URL" "$_KERNEL_SRC_SHA256")
+	local kernel_src; kernel_src=$(build_extract_source "linux-headers-for-glibc" "$kernel_tarball")
+
+	local headers_dir="$sandbox_dir/linux-headers"
+	rm -rf "$headers_dir"
+	mkdir -p "$headers_dir"
+	make -C "$kernel_src" ARCH=x86_64 INSTALL_HDR_PATH="$headers_dir" headers_install >/dev/null
+	# headers_install places linux/, asm/, etc. under $INSTALL_HDR_PATH/include,
+	# not $INSTALL_HDR_PATH itself -- --with-headers needs that inner dir
+	# directly (confirmed against scripts/lib/common.sh's own
+	# LINUX_HEADERS_DIR="$BUILD_DIR/linux-headers/include").
+	headers_dir="$headers_dir/include"
+
+	local build_dir; build_dir=$(mktemp -d)
+	(
+		cd "$build_dir"
+		"$src/configure" \
+			--prefix=/usr \
+			--with-headers="$headers_dir" \
+			--disable-werror \
+			--enable-kernel=5.4 \
+			libc_cv_slibdir=/usr/lib
+		make -j"$jobs"
+		make DESTDIR="$files" install
+
+		# memusagestat needs libgd, which FloraOS doesn't ship -- see docs/MANIFEST.md
+		rm -f "$files/usr/bin/memusagestat"
+	)
+	rm -rf "$build_dir"
+}

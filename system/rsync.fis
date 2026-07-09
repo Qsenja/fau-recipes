@@ -1,0 +1,30 @@
+# rsync -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/rsync.sh + config/versions.conf. See
+# tools/fau/fau.md's "fau update also sweeps base system packages" section.
+# Was present in etc/fau/source-built-packages but missed from the first
+# conversion pass entirely -- no build-host-only concept here, same
+# trivial shape as the rest, see docs/TODO.md.
+PKG_SRC_URL="https://download.samba.org/pub/rsync/src/rsync-3.4.2.tar.gz"
+PKG_SRC_SHA256="ff10aa2c151cd4b2dbbe6135126dbc854046113d2dfb49572a348233267eb315"
+PKG_VERSION="3.4.2"
+PKG_DESCRIPTION="used by fau itself to merge package installs into FAU_ROOT"
+PKG_DEPENDS="glibc"
+PKG_BUILD_DEPS="gcc,make"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		./configure --prefix=/usr \
+			--disable-openssl \
+			--disable-zstd \
+			--disable-lz4 \
+			--disable-xxhash \
+			--disable-md2man \
+			--with-included-popt
+		make -j"$jobs"
+		make DESTDIR="$files" install
+	)
+}

@@ -1,0 +1,34 @@
+# sysvinit -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/sysvinit.sh + config/versions.conf. See
+# tools/fau/fau.md's "fau update also sweeps base system packages" section.
+# build-rootfs.sh rebuilds sulogin a *second* time, inline, against a
+# fully-merged rootfs's own libxcrypt -- because at ISO-build time
+# libxcrypt isn't built yet when sysvinit first is. That ordering
+# constraint doesn't apply here: PKG_DEPENDS is checked (and satisfied)
+# before recipe_build ever runs, so libxcrypt is already installed and
+# sulogin can be linked correctly in the same pass, no second extraction
+# or rebuild needed.
+PKG_SRC_URL="https://github.com/slicer69/sysvinit/archive/refs/tags/3.15.tar.gz"
+PKG_SRC_SHA256="4c1a28d6e97fa656ec70aa736185d72c9b31a6a4fa414f2fddacd61c7d9f47cf"
+PKG_VERSION="3.15"
+PKG_DESCRIPTION="sysvinit -- PID1 for OpenRC"
+PKG_DEPENDS="glibc,libxcrypt"
+PKG_BUILD_DEPS="gcc,make"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		make -C src -j"$jobs"
+		make -C src ROOT="$files" base_bindir=/usr/bin base_sbindir=/usr/bin install
+		# real libxcrypt is already installed (PKG_DEPENDS above), so sulogin
+		# can be linked correctly right here -- no drop-then-rebuild dance
+		gcc -Wall -Wextra -O2 -D_GNU_SOURCE -D_XOPEN_SOURCE \
+			-I"$src/src" \
+			-o "$files/usr/bin/sulogin" \
+			"$src/src/sulogin.c" "$src/src/consoles.c" -lcrypt
+		chmod 755 "$files/usr/bin/sulogin"
+	)
+}

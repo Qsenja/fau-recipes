@@ -1,0 +1,70 @@
+# linux-lts -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/linux-lts.sh + config/versions.conf. See
+# tools/fau/fau.md's "fau update also sweeps base system packages" section.
+#
+# The highest-blast-radius package this project rebuilds from source: a
+# bad rebuild only fails on the *next* boot (the running kernel is
+# unaffected), and recovery is via floragrub-cfg's existing per-subvolume
+# GRUB entries -- fau update's unconditional pre-update `fau backup`
+# snapshot gets its own entry, pointing at that snapshot's own untouched
+# /boot/vmlinuz-floraos, before this recipe ever touches the live @'s
+# copy. See docs/TODO.md for the full reasoning and what's still
+# unverified (a real QEMU bad-kernel-reboot-recover test).
+#
+# recipe_post_merge below is the first (and so far only) user of that
+# hook: depmod needs to run against the *merged* module tree
+# (/usr/lib/modules/<kernelrelease>), not the sandbox's staged output,
+# so it can't happen inside recipe_build.
+PKG_SRC_URL="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.38.tar.xz"
+PKG_SRC_SHA256="ac26e508abd56e9f8b89872b6e10c49fc823bcc70d8068a5d8504c1a7c4ff045"
+PKG_VERSION="6.18.38"
+PKG_DESCRIPTION="Linux LTS kernel"
+PKG_DEPENDS="kmod"
+PKG_BUILD_DEPS="gcc,make,bison,flex,bc"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+
+	log "linux-lts: configuring (defconfig)"
+	make -C "$src" ARCH=x86_64 defconfig >/dev/null
+
+	# GUI-readiness config -- see docs/MANIFEST.md and the original
+	# scripts/recipes/linux-lts.sh for the full reasoning behind each of
+	# these (found via real boot testing, not guessed). BTRFS_FS must be
+	# =y (built-in): florainstall boots the target disk directly, no
+	# initramfs.
+	"$src/scripts/config" --file "$src/.config" \
+		--enable SYSFB_SIMPLEFB \
+		--enable DRM \
+		--enable DRM_KMS_HELPER \
+		--enable DRM_SIMPLEDRM \
+		--enable DRM_FBDEV_EMULATION \
+		--enable FRAMEBUFFER_CONSOLE \
+		--enable DRM_BOCHS \
+		--module DRM_AMDGPU \
+		--module DRM_NOUVEAU \
+		--enable BTRFS_FS
+	make -C "$src" ARCH=x86_64 olddefconfig >/dev/null
+
+	log "linux-lts: building (this is the longest single step, -j$jobs)"
+	make -C "$src" ARCH=x86_64 -j"$jobs" bzImage modules >/dev/null
+
+	mkdir -p "$files/boot" "$files/lib/modules"
+	cp "$src/arch/x86/boot/bzImage" "$files/boot/vmlinuz-floraos"
+	cp "$src/System.map" "$files/boot/System.map-floraos"
+	cp "$src/.config" "$files/boot/config-floraos"
+	make -C "$src" ARCH=x86_64 INSTALL_MOD_PATH="$files" modules_install >/dev/null
+
+	# --no-print-directory is required: without it, -C's Entering/Leaving-directory
+	# lines corrupt this captured single-line file and depmod rejects it
+	make --no-print-directory -C "$src" ARCH=x86_64 kernelrelease > "$files/boot/kernelrelease"
+}
+
+recipe_post_merge() {
+	local root=$1
+	local kernel_release; kernel_release=$(cat "$root/boot/kernelrelease")
+	log "linux-lts: running depmod for $kernel_release"
+	"$root/usr/bin/depmod" -b "$root" "$kernel_release"
+}
