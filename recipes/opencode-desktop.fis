@@ -39,8 +39,14 @@
 PKG_SRC_URL="https://github.com/anomalyco/opencode/releases/download/v1.17.15/opencode-desktop-linux-amd64.deb"
 PKG_SRC_SHA256="8c11ad312e65a495955def8acd08114a1a3c05c684cc6bce37321b01695e774c"
 PKG_VERSION="1.17.15"
+# libudev.so.1 (also in the real NEEDED list) is deliberately not listed
+# below -- see vesktop.fis's own comment on this: FloraOS builds its own
+# eudev from source unconditionally as part of every base rootfs, and
+# "eudev" isn't even a real Arch/Artix package name (Artix's own package
+# for this is "udev") -- listing it here doesn't just do nothing, it makes
+# alpm_resolve_many fail outright and abort the whole dependency merge.
 PKG_DESCRIPTION="Open source AI coding agent -- desktop app (opencode.ai)"
-PKG_DEPENDS="glibc,gcc-libs,eudev,glib2,nspr,nss,dbus,at-spi2-core,libcups,cairo,gtk3,pango,libx11,libxcomposite,libxdamage,libxext,libxfixes,libxrandr,mesa,expat,libxcb,libxkbcommon,alsa-lib,libnotify,libxss,libxtst,xdg-utils,util-linux-libs,libsecret"
+PKG_DEPENDS="glibc,gcc-libs,glib2,nspr,nss,dbus,at-spi2-core,libcups,cairo,gtk3,pango,libx11,libxcomposite,libxdamage,libxext,libxfixes,libxrandr,mesa,expat,libxcb,libxkbcommon,alsa-lib,libnotify,libxss,libxtst,xdg-utils,util-linux-libs,libsecret"
 PKG_BUILD_DEPS="xz"
 PKG_BIN="usr/bin/opencode-desktop"
 

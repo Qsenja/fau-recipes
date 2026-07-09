@@ -31,8 +31,22 @@
 PKG_SRC_URL="https://github.com/Vencord/Vesktop/releases/download/v1.6.5/vesktop-1.6.5.tar.gz"
 PKG_SRC_SHA256="a2d1fc9a0c94cd0b47c9ed9240d23d126410894a58f25f9425aad8f02871565d"
 PKG_VERSION="1.6.5"
+# libudev.so.1 (also in vesktop's own NEEDED list) is deliberately not
+# listed below: FloraOS builds its own eudev from source, unconditionally,
+# as part of every base rootfs (scripts/recipes/eudev.sh) -- it's already
+# there on every system this recipe could ever run on, nothing to depend
+# on. Confirmed the hard way: "eudev" isn't a real Arch/Artix package name
+# at all (Artix's own real package for this is "udev", not "eudev" -- an
+# Artix-only split-out of systemd's udev component, unrelated to FloraOS's
+# own from-scratch eudev build under that name), so listing it here isn't
+# just redundant, it's actively fatal -- alpm_resolve_many fails outright
+# the instant any ONE requested name can't be resolved, aborting the
+# merge for every other dependency too, not just the bad one. Found on a
+# real `fau install vesktop` (well, cursor.fis's copy of this same list,
+# but the mistake was here first): "couldn't resolve 'eudev' in any
+# configured Arch/Artix repo".
 PKG_DESCRIPTION="Cross-platform Discord client with Vencord pre-installed (Electron, prebuilt upstream release)"
-PKG_DEPENDS="glibc,gcc-libs,eudev,glib2,nspr,nss,dbus,at-spi2-core,libcups,cairo,gtk3,pango,libx11,libxcomposite,libxdamage,libxext,libxfixes,libxrandr,mesa,expat,libxcb,libxkbcommon,alsa-lib"
+PKG_DEPENDS="glibc,gcc-libs,glib2,nspr,nss,dbus,at-spi2-core,libcups,cairo,gtk3,pango,libx11,libxcomposite,libxdamage,libxext,libxfixes,libxrandr,mesa,expat,libxcb,libxkbcommon,alsa-lib"
 PKG_BUILD_DEPS=""
 PKG_BIN="usr/bin/vesktop"
 

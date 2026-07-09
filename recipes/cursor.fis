@@ -29,8 +29,17 @@
 PKG_SRC_URL="https://downloads.cursor.com/production/23b9fb205fe595ea2be29da7214e19762d037fc3/linux/x64/deb/amd64/deb/cursor_3.10.20_amd64.deb"
 PKG_SRC_SHA256="77f665b8b5debbbeb19dc4349c97ed8d0e5fdbb2b38e12df7f02047c2423d8b5"
 PKG_VERSION="3.10.20"
+# libudev.so.1 (also in the real NEEDED list) is deliberately not listed
+# below -- see vesktop.fis's own comment on this: FloraOS builds its own
+# eudev from source unconditionally as part of every base rootfs, and
+# "eudev" isn't even a real Arch/Artix package name (Artix's own package
+# for this is "udev") -- listing it here doesn't just do nothing, it makes
+# alpm_resolve_many fail outright and abort the whole dependency merge.
+# Found on a real `fau install cursor`: "couldn't resolve 'eudev' in any
+# configured Arch/Artix repo", aborting all 24 other, genuinely resolvable
+# dependencies along with it.
 PKG_DESCRIPTION="AI-first code editor (Electron, prebuilt upstream release)"
-PKG_DEPENDS="glibc,gcc-libs,eudev,glib2,nspr,nss,dbus,at-spi2-core,libcups,cairo,gtk3,pango,libx11,libxcomposite,libxdamage,libxext,libxfixes,libxrandr,mesa,expat,libxcb,libxkbcommon,alsa-lib,xdg-utils"
+PKG_DEPENDS="glibc,gcc-libs,glib2,nspr,nss,dbus,at-spi2-core,libcups,cairo,gtk3,pango,libx11,libxcomposite,libxdamage,libxext,libxfixes,libxrandr,mesa,expat,libxcb,libxkbcommon,alsa-lib,xdg-utils"
 PKG_BUILD_DEPS="xz"
 PKG_BIN="usr/bin/cursor"
 
