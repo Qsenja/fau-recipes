@@ -1,50 +1,10 @@
 # opencode-desktop: Electron-based desktop GUI for opencode (see
-# opencode.fis), same anomalyco/opencode repo/release, AUR-only. Built via
+# opencode.fis), same anomalyco/opencode repo/release, AUR-only. Prebuilt,
+# not compiled from source -- see tools/fau/fau.md. Built via
 # `fau build opencode-desktop`.
-#
-# Same "prebuilt, not compiled" reasoning as vesktop.fis -- Electron again,
-# same "nobody actually compiles Electron/Chromium itself" argument applies
-# here too. The difference from vesktop: upstream ships NO plain Linux
-# tarball for this one at all, only .deb/.rpm/.AppImage -- confirmed across
-# the last several tagged releases, not just this one. Of those three, only
-# .deb has a container format simple enough to parse without pulling in a
-# whole new tool (`ar`, global "!<arch>\n" magic + a flat sequence of
-# fixed-size member headers) -- .rpm is cpio wrapped in its own lead/header
-# format, .AppImage is an ELF stub over a squashfs image, either of which
-# would need a real dedicated tool this project doesn't otherwise carry.
-# `build_extract_source` (tools/fau/lib/build.sh) now special-cases a
-# *.deb PKG_SRC_URL: parses the outer ar container directly (via the new
-# ar_extract_member_prefix helper -- verified byte-for-byte identical to a
-# real `ar x` before relying on it) to pull out data.tar.* (dpkg's actual
-# filesystem payload; control.tar.* is its install-script/metadata half,
-# never wanted here), then hands that inner tarball to plain `tar -xf`.
-#
-# PKG_BUILD_DEPS="xz": this .deb's own data.tar happens to be
-# xz-compressed (confirmed directly against the real downloaded file) --
-# gzip/zstd are already base-system tools (see fau.md), xz/liblzma isn't,
-# and build_extract_source needs it on PATH *before* recipe_build ever
-# runs. fau-build now exports the same $sandbox_dir-prefixed PATH around
-# build_extract_source that it always exported around recipe_build, for
-# exactly this.
-#
-# $src (once correctly extracted) is the .deb's own data.tar.* payload
-# tree -- opt/OpenCode/ (the actual Electron bundle) and a
-# usr/share/{applications,icons}/ pair dpkg's own postinst would normally
-# wire into /usr/bin, /usr/share/applications, etc. as root. This recipe
-# reuses the icons verbatim (already real hicolor-shaped pngs) but writes
-# its own .desktop + usr/bin shim rather than reusing the upstream ones
-# as-is, so the exposed command is "opencode-desktop" (matching this
-# recipe's own name) instead of upstream's internal bundle-id executable
-# name "ai.opencode.desktop".
 PKG_SRC_URL="https://github.com/anomalyco/opencode/releases/download/v1.17.15/opencode-desktop-linux-amd64.deb"
 PKG_SRC_SHA256="8c11ad312e65a495955def8acd08114a1a3c05c684cc6bce37321b01695e774c"
 PKG_VERSION="1.17.15"
-# libudev.so.1 (also in the real NEEDED list) is deliberately not listed
-# below -- see vesktop.fis's own comment on this: FloraOS builds its own
-# eudev from source unconditionally as part of every base rootfs, and
-# "eudev" isn't even a real Arch/Artix package name (Artix's own package
-# for this is "udev") -- listing it here doesn't just do nothing, it makes
-# alpm_resolve_many fail outright and abort the whole dependency merge.
 PKG_DESCRIPTION="Open source AI coding agent -- desktop app (opencode.ai)"
 PKG_DEPENDS="glibc,gcc-libs,glib2,nspr,nss,dbus,at-spi2-core,libcups,cairo,gtk3,pango,libx11,libxcomposite,libxdamage,libxext,libxfixes,libxrandr,mesa,expat,libxcb,libxkbcommon,alsa-lib,libnotify,libxss,libxtst,xdg-utils,util-linux-libs,libsecret"
 PKG_BUILD_DEPS="xz"
@@ -63,11 +23,6 @@ recipe_build() {
 	mkdir -p "$libdir"
 	cp -a "$src/opt/OpenCode/." "$libdir/"
 
-	# Same reasoning as vesktop.fis's own shim: Chromium sandboxing needs
-	# chrome-sandbox owned by root with the setuid bit, which fau's
-	# unprivileged per-app install model has no way to set up -- routed
-	# around with Electron/Chromium's own documented --no-sandbox flag
-	# instead of ever exposing the real ELF directly as PKG_BIN.
 	mkdir -p "$app_dir/usr/bin"
 	cat > "$app_dir/usr/bin/opencode-desktop" <<-EOF
 	#!/bin/sh
@@ -75,10 +30,6 @@ recipe_build() {
 	EOF
 	chmod 755 "$app_dir/usr/bin/opencode-desktop"
 
-	# The .deb's own usr/share/icons tree is already real hicolor-shaped
-	# (32/64/128px pngs, confirmed via the extracted payload) -- reused
-	# as-is, just renamed alongside the command above instead of keeping
-	# upstream's own ai.opencode.desktop basename.
 	local size icon_src
 	for size in 32x32 64x64 128x128; do
 		icon_src="$src/usr/share/icons/hicolor/$size/apps/ai.opencode.desktop.png"

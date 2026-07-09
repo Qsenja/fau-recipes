@@ -1,29 +1,7 @@
 # opencode: AI coding agent, built for the terminal (anomalyco/opencode,
 # formerly hosted at sst/opencode -- that name now just redirects; homepage
-# opencode.ai). AUR-only, no official Arch/Artix repo. Built via `fau build
-# opencode`.
-#
-# Like vesktop.fis, this isn't a from-source compile: opencode's own release
-# is a single Bun-compiled, self-contained executable (`readelf -d` shows
-# only libc/libpthread/libdl/libm -- plain glibc, nothing else) with no
-# separate source-vs-binary distinction upstream ships at all. PKG_SRC_URL
-# pins that release asset directly, checksummed exactly like any other
-# recipe's source tarball.
-#
-# **recipe_build re-fetches and re-extracts PKG_SRC_URL itself, ignoring the
-# $src fau-build already handed it.** `build_extract_source` (lib/build.sh)
-# always runs `tar -xf ... --strip-components=1`, which assumes a wrapping
-# "repo-tag/" directory -- true for dwm/mango's GitHub-archive tarballs, but
-# this release asset is a single flat file (`tar tzf
-# opencode-linux-x64.tar.gz` lists just "opencode", no wrapping dir).
-# Stripping 1 path component from a name that only *has* one component
-# doesn't error -- confirmed directly: exit 0, zero files extracted, no
-# warning printed at all -- it just silently hands recipe_build an empty
-# $src. Re-calling build_fetch_source here is a cache hit (already
-# downloaded and sha256-verified by the time recipe_build runs), so this
-# costs nothing extra; re-extracting without any --strip-components is the
-# actual fix, done entirely inside this recipe rather than touching
-# build_extract_source's own shared, every-other-recipe-relied-on behavior.
+# opencode.ai). AUR-only, no official Arch/Artix repo. Prebuilt, not
+# compiled from source -- see tools/fau/fau.md. Built via `fau build opencode`.
 PKG_SRC_URL="https://github.com/anomalyco/opencode/releases/download/v1.17.15/opencode-linux-x64.tar.gz"
 PKG_SRC_SHA256="0e1353771192c7d2dc0c610d61ff70668bb8a4420dc4d9e35cfd33d7245f3e67"
 PKG_VERSION="1.17.15"
@@ -40,6 +18,8 @@ recipe_source_for_version() {
 
 recipe_build() {
 	local src=$1 app_dir=$2 sandbox_dir=$3
+	# Re-fetches/re-extracts PKG_SRC_URL itself rather than trusting $src --
+	# this release asset is a flat tarball, see tools/fau/fau.md.
 	local tarball; tarball=$(build_fetch_source "$PKG_SRC_URL" "$PKG_SRC_SHA256")
 	mkdir -p "$app_dir/usr/bin"
 	tar -xzf "$tarball" -C "$app_dir/usr/bin"

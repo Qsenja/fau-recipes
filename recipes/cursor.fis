@@ -1,47 +1,17 @@
 # cursor: AI-first code editor (Anysphere, cursor.com), Electron/VS Code
-# fork. AUR-only, as `cursor-bin`. Built via `fau build cursor`.
-#
-# Deliberately NOT a port of AUR's own cursor-bin PKGBUILD, even though it
-# exists: that recipe strips Electron out of the .deb entirely and depends
-# on a system `electron40` package instead, purely an AUR-side optimization
-# (Arch happens to package a handful of pinned Electron versions, shared
-# across many Electron apps to save disk) -- not a property of the upstream
-# .deb itself. Confirmed directly by extracting the REAL upstream .deb
-# (same URL cursor-bin's own PKGBUILD points at): it ships a fully
-# self-contained Electron bundle (usr/share/cursor/cursor, chrome-sandbox,
-# libEGL/libGLESv2/libvulkan/libvk_swiftshader/libffmpeg .so's, even its own
-# bundled `rg` ripgrep binary at resources/app/node_modules/@vscode/
-# ripgrep/bin/rg) -- the exact same shape as vesktop.fis/opencode-
-# desktop.fis, and PKG_DEPENDS below was verified the same way (readelf -d
-# on the real bundled binary), not copied from the AUR package's own
-# electron40-shaped dependency list, which wouldn't apply here at all.
-#
-# .deb handling (build_extract_source's ar-parsing, PKG_BUILD_DEPS="xz" for
-# the xz-compressed inner data.tar) is identical to opencode-desktop.fis --
-# see that recipe and tools/fau/fau.md's own section on this.
-#
-# No recipe_source_for_version: unlike vesktop/opencode's plain
-# `v<version>` tag URLs, Cursor's own CDN path embeds a git commit sha
-# (.../production/<sha>/linux/x64/deb/amd64/deb/cursor_<version>_amd64.deb)
-# that isn't derivable from the version string alone -- `fau build
-# cursor=<other version>` correctly refuses instead of guessing a URL that
-# would 404.
+# fork. AUR-only, as `cursor-bin`. Deliberately not a port of that AUR
+# package (which depends on a system electron40 instead of bundling its
+# own) -- see tools/fau/fau.md. Built via `fau build cursor`.
 PKG_SRC_URL="https://downloads.cursor.com/production/23b9fb205fe595ea2be29da7214e19762d037fc3/linux/x64/deb/amd64/deb/cursor_3.10.20_amd64.deb"
 PKG_SRC_SHA256="77f665b8b5debbbeb19dc4349c97ed8d0e5fdbb2b38e12df7f02047c2423d8b5"
 PKG_VERSION="3.10.20"
-# libudev.so.1 (also in the real NEEDED list) is deliberately not listed
-# below -- see vesktop.fis's own comment on this: FloraOS builds its own
-# eudev from source unconditionally as part of every base rootfs, and
-# "eudev" isn't even a real Arch/Artix package name (Artix's own package
-# for this is "udev") -- listing it here doesn't just do nothing, it makes
-# alpm_resolve_many fail outright and abort the whole dependency merge.
-# Found on a real `fau install cursor`: "couldn't resolve 'eudev' in any
-# configured Arch/Artix repo", aborting all 24 other, genuinely resolvable
-# dependencies along with it.
 PKG_DESCRIPTION="AI-first code editor (Electron, prebuilt upstream release)"
 PKG_DEPENDS="glibc,gcc-libs,glib2,nspr,nss,dbus,at-spi2-core,libcups,cairo,gtk3,pango,libx11,libxcomposite,libxdamage,libxext,libxfixes,libxrandr,mesa,expat,libxcb,libxkbcommon,alsa-lib,xdg-utils"
 PKG_BUILD_DEPS="xz"
 PKG_BIN="usr/bin/cursor"
+
+# No recipe_source_for_version -- Cursor's CDN path embeds a git commit sha
+# not derivable from the version string alone. See tools/fau/fau.md.
 
 recipe_build() {
 	local src=$1 app_dir=$2 sandbox_dir=$3
@@ -50,18 +20,6 @@ recipe_build() {
 	mkdir -p "$libdir"
 	cp -a "$src/usr/share/cursor/." "$libdir/"
 
-	# Same reasoning as vesktop.fis/opencode-desktop.fis: Chromium sandboxing
-	# needs chrome-sandbox owned by root with the setuid bit, which fau's
-	# unprivileged per-app install model has no way to set up -- routed
-	# around with Electron/Chromium's own documented --no-sandbox flag
-	# instead of ever exposing the real ELF directly as PKG_BIN. Upstream's
-	# own bin/cursor CLI wrapper (a fancier terminal helper -- window
-	# reuse, `cursor agent`, a curl|bash self-installer for cursor-agent)
-	# is deliberately NOT exposed here -- it assumes a system /usr/bin/node
-	# and reaches out to the network on first run, neither of which fits
-	# this recipe's own self-contained, no-extra-deps shape. This shim
-	# covers the same thing the real .desktop file's own Exec= does:
-	# launch the editor directly, opening any file arguments given.
 	mkdir -p "$app_dir/usr/bin"
 	cat > "$app_dir/usr/bin/cursor" <<-EOF
 	#!/bin/sh
