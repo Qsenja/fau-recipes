@@ -84,6 +84,22 @@ recipe_build() {
 	export BISON_PKGDATADIR="$sandbox_dir/usr/share/bison"
 	export M4="$sandbox_dir/usr/bin/m4"
 
+	# perl itself runs fine off the sandbox's PATH, but its own libperl.so
+	# lives under a version-specific nested dir (usr/lib/perl5/<ver>/
+	# core_perl/CORE/), never in the top-level usr/lib the sandbox wrapper
+	# already puts on LD_LIBRARY_PATH -- confirmed via a real QEMU run:
+	# "perl: error while loading shared libraries: libperl.so: cannot open
+	# shared object file", failing lib/Makefile's OID_registry generation.
+	# An earlier host-side spot-check of this recipe missed this entirely:
+	# the build host's own already-installed system perl/libperl.so was a
+	# silent fallback there, masking the gap -- only a real live-system run
+	# (no system perl at all to fall back to) actually exposed it. Found
+	# via `find`, not hardcoded: the version directory (5.42 today) isn't
+	# worth pinning and will drift with future perl updates.
+	local perl_core_dir
+	perl_core_dir=$(dirname "$(find "$sandbox_dir/usr/lib/perl5" -name libperl.so 2>/dev/null | head -1)")
+	[ -n "$perl_core_dir" ] && export LD_LIBRARY_PATH="$perl_core_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
 	log "linux-lts: configuring (defconfig)"
 	make -C "$src" ARCH=x86_64 HOSTCFLAGS="$hostcflags" defconfig >/dev/null
 
