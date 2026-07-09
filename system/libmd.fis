@@ -1,0 +1,20 @@
+# libmd -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. Translated from the main FloraOS repo's
+# scripts/recipes/libmd.sh + config/versions.conf. See tools/fau/fau.md's
+# "fau update also sweeps base system packages" section.
+PKG_SRC_URL="https://archive.hadrons.org/software/libmd/libmd-1.2.0.tar.xz"
+PKG_SRC_SHA256="ac15ffb8430502fbaccdec66c5a82ee0eab0b0f36220df56710feadfeb13d0a0"
+PKG_VERSION="1.2.0"
+PKG_DESCRIPTION="BSD message-digest library -- dhcpcd links against it, no way to disable"
+PKG_DEPENDS="glibc"
+
+recipe_build() {
+	local src=$1 files=$2
+	local jobs; jobs=$(nproc)
+	(
+		cd "$src"
+		./configure --prefix=/usr
+		make -j"$jobs"
+		make DESTDIR="$files" install
+	)
+}
