@@ -36,7 +36,16 @@ PKG_DESCRIPTION="Linux LTS kernel"
 PKG_NEEDS_DISK="1"
 PKG_MANUAL_UPDATE="1"
 PKG_DEPENDS="kmod"
-PKG_BUILD_DEPS="gcc,make,bison,flex,bc,linux-api-headers,m4"
+# perl: lib/Makefile's OID_registry generation (build_OID_registry) shells
+# out to it directly -- not in the kernel's own documented build
+# requirements (Documentation/process/changes.rst), found only by a real
+# build failing on it. diffutils: scripts/Makefile.host's sync-check.sh
+# wants `diff` to compare tools/ ABI header copies against their kernel
+# source of truth -- only prints warnings if missing, not fatal, but
+# genuinely needed for a clean build. openssl: IS in changes.rst, used by
+# certs/extract-cert.c and scripts/sign-file.c (default trusted-keyring
+# cert generation runs even without CONFIG_MODULE_SIG enabled).
+PKG_BUILD_DEPS="gcc,make,bison,flex,bc,linux-api-headers,m4,perl,diffutils,openssl"
 
 recipe_build() {
 	local src=$1 files=$2 sandbox_dir=$3
