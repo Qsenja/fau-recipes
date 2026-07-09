@@ -56,6 +56,14 @@ recipe_build() {
 	# command-line override.
 	local hostcflags="-idirafter $sandbox_dir/usr/include"
 
+	# bison looks up its own M4 macro library (m4sugar.m4 etc) via a
+	# compile-time hardcoded path (/usr/share/bison), never relative to
+	# wherever its own binary happens to be found on PATH -- the sandbox's
+	# bison package does ship these files, just not at that absolute
+	# path. BISON_PKGDATADIR is bison's own documented override for
+	# exactly this (relocatable-install) situation.
+	export BISON_PKGDATADIR="$sandbox_dir/usr/share/bison"
+
 	log "linux-lts: configuring (defconfig)"
 	make -C "$src" ARCH=x86_64 HOSTCFLAGS="$hostcflags" defconfig >/dev/null
 
