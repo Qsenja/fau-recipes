@@ -1,5 +1,5 @@
 # dwm: dynamic window manager for X11 (AUR-only, suckless.org). Built via
-# `fau build dwm`. Scaffolded by tools/aur-to-fis (main FloraOS repo) from
+# `fau build dwm`. Scaffolded by tools/pkgbuild-to-fis (main FloraOS repo) from
 # the real AUR PKGBUILD, then hand-finished against the real dwm-6.8
 # Makefile/config.mk. X11INC/X11LIB/FREETYPEINC point into $sandbox_dir, NOT
 # the real /usr/include/X11 the AUR PKGBUILD's own build() uses -- that path
