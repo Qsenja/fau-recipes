@@ -23,11 +23,18 @@
 # a path this rebuild touches, so it would burn a long build for
 # literally zero effect, not just an unsafe one. Most packages don't set
 # this and update fine on a live system with no snapshot to fall back to.
+#
+# PKG_MANUAL_UPDATE=1: a real kernel build is the slowest thing `fau
+# update` can do (tens of minutes, even parallelized) -- too slow to
+# run unattended as part of an everyday update. A bare `fau update` now
+# reports it as available and skips it; `fau update linux-lts` (naming
+# it explicitly) still rebuilds it.
 PKG_SRC_URL="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.38.tar.xz"
 PKG_SRC_SHA256="ac26e508abd56e9f8b89872b6e10c49fc823bcc70d8068a5d8504c1a7c4ff045"
 PKG_VERSION="6.18.38"
 PKG_DESCRIPTION="Linux LTS kernel"
 PKG_NEEDS_DISK="1"
+PKG_MANUAL_UPDATE="1"
 PKG_DEPENDS="kmod"
 PKG_BUILD_DEPS="gcc,make,bison,flex,bc,linux-api-headers,m4"
 
