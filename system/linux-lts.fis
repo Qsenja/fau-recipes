@@ -100,6 +100,21 @@ recipe_build() {
 	perl_core_dir=$(dirname "$(find "$sandbox_dir/usr/lib/perl5" -name libperl.so 2>/dev/null | head -1)")
 	[ -n "$perl_core_dir" ] && export LD_LIBRARY_PATH="$perl_core_dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
+	# perl also needs its own core/site/vendor module dirs on PERL5LIB --
+	# same root cause as libperl.so above: Perl's compiled-in @INC
+	# defaults are absolute paths into a real live system's
+	# /usr/share/perl5 and /usr/lib/perl5/<ver>, neither of which exists
+	# on FloraOS at all. Confirmed via a real QEMU run, one build further
+	# than the libperl.so fix above got: "Can't locate strict.pm in
+	# @INC" -- strict.pm (a bundled core Perl module) is right there in
+	# the sandbox at usr/share/perl5/core_perl/strict.pm, just not
+	# anywhere perl actually looks without help.
+	local perl5lib
+	perl5lib=$(find "$sandbox_dir/usr/share/perl5" "$sandbox_dir/usr/lib/perl5" \
+		-mindepth 1 -maxdepth 2 -type d \( -name core_perl -o -name site_perl -o -name vendor_perl \) \
+		2>/dev/null | paste -sd: -)
+	[ -n "$perl5lib" ] && export PERL5LIB="$perl5lib"
+
 	log "linux-lts: configuring (defconfig)"
 	make -C "$src" ARCH=x86_64 HOSTCFLAGS="$hostcflags" defconfig >/dev/null
 
