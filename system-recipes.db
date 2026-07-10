@@ -20,6 +20,7 @@ libxcrypt
 linux-lts
 mbedtls
 ncurses
+nvidia
 openrc
 procps-ng
 rsync

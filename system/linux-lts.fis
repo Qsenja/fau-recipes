@@ -156,7 +156,71 @@ recipe_build() {
 
 	# --no-print-directory is required: without it, -C's Entering/Leaving-directory
 	# lines corrupt this captured single-line file and depmod rejects it
-	make --no-print-directory -C "$src" ARCH=x86_64 kernelrelease > "$files/boot/kernelrelease"
+	local kernel_release
+	kernel_release=$(make --no-print-directory -C "$src" ARCH=x86_64 kernelrelease)
+	echo "$kernel_release" > "$files/boot/kernelrelease"
+
+	# Stage a build-capable kernel tree at the exact path any out-of-tree
+	# module's own Makefile already looks for by convention
+	# (/lib/modules/<release>/build -- confirmed directly against a real
+	# NVIDIA driver .run installer's kernel/Makefile, which defaults to
+	# exactly this path via its own SYSSRC/KERNEL_UNAME logic). Without
+	# this, nothing -- not just nvidia.fis, any future out-of-tree module
+	# (VirtualBox guest additions, ZFS, ...) -- can be built against a
+	# running FloraOS system at all: confirmed this genuinely didn't exist
+	# before this change (only bzImage/System.map/config/modules_install's
+	# own output ever reached $files).
+	#
+	# `cp -a` the whole configured+built tree, then prune what an external
+	# module build never touches -- the actual kernel subsystem source
+	# (kernel/, mm/, drivers/, fs/, net/, sound/, crypto/, security/,
+	# virt/, ipc/, block/, init/, lib/, samples/, usr/, rust/, io_uring/,
+	# dropped below) never gets read by Kbuild's M=<dir> external-module
+	# path, only scripts/ (kbuild machinery, including already-built host
+	# tools like scripts/mod/modpost -- keeping them avoids rebuilding),
+	# include/ (kernel-internal headers a module's own .c includes),
+	# arch/x86/ (arch-specific headers + Makefile/Kbuild fragments an
+	# external module's build still recurses through -- except
+	# arch/x86/boot/, the bzImage build's own output tree, already copied
+	# separately to boot/vmlinuz-floraos above and never read by an
+	# external module build), Module.symvers (the actual exported-symbol
+	# version table an external module links against), certs/
+	# (referenced by the top Makefile even when module signing is off),
+	# and tools/objtool/ (linked in if CONFIG_STACK_VALIDATION is on --
+	# tools/perf and tools/testing are dropped, unrelated to module
+	# builds and by far the largest of tools/'s own subdirectories).
+	#
+	# This prune list was NOT reasoned out in one pass -- a first cut only
+	# dropped the subsystem-source directories above and left everything
+	# else, verified against a real build producing 1.1G; du -sh on the
+	# actual result found arch/x86/boot/ (121M, the bzImage tree, already
+	# redundant), vmlinux/vmlinux.o/vmlinux.unstripped/vmlinux.a/built-in.a
+	# (~230M combined, pure link byproducts an external module build never
+	# touches), Documentation/ (77M, despite an earlier version of this
+	# comment claiming it was never copied at all -- it was, until this
+	# real measurement caught it), tools/perf+tools/testing (78M), and
+	# io_uring/ (a subsystem source dir this list had simply missed) --
+	# real measurement, not guessing, cut the staged tree roughly in half.
+	# Staged under usr/lib/modules (not lib/modules, where modules_install
+	# above already wrote the real module files): FAU_ROOT is a merged-/usr
+	# tree with /lib -> /usr/lib, so once rsync merges both staged paths
+	# into the real root, "lib/modules/<release>/" and
+	# "usr/lib/modules/<release>/build/" resolve to the very same real
+	# directory -- no manual symlink needed (confirmed: rsync -a follows an
+	# existing destination symlink like any normal path traversal would,
+	# same as every other package's own lib/-vs-usr/lib/ output already
+	# relies on elsewhere in this recipe and every other one).
+	local build_dir="$files/usr/lib/modules/$kernel_release/build"
+	mkdir -p "$build_dir"
+	cp -a "$src/." "$build_dir/"
+	rm -rf "$build_dir"/kernel "$build_dir"/mm "$build_dir"/drivers "$build_dir"/fs \
+		"$build_dir"/net "$build_dir"/sound "$build_dir"/crypto "$build_dir"/security \
+		"$build_dir"/virt "$build_dir"/ipc "$build_dir"/block "$build_dir"/init \
+		"$build_dir"/lib "$build_dir"/samples "$build_dir"/usr "$build_dir"/rust \
+		"$build_dir"/io_uring "$build_dir"/Documentation "$build_dir"/arch/x86/boot \
+		"$build_dir"/vmlinux "$build_dir"/vmlinux.o "$build_dir"/vmlinux.a \
+		"$build_dir"/vmlinux.unstripped "$build_dir"/built-in.a \
+		"$build_dir"/tools/perf "$build_dir"/tools/testing
 }
 
 recipe_post_merge() {

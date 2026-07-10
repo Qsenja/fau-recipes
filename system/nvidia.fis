@@ -1,0 +1,201 @@
+# nvidia -- FloraOS base-system package, live-rebuildable via `fau
+# bootstrap-build`. NVIDIA's proprietary driver: kernel module + userspace
+# GLVND/Vulkan bits, built/staged against FloraOS's own kernel. See
+# tools/fau/fau.md's "NVIDIA driver support" section for the full story.
+#
+# Why proprietary, not NVIDIA's own open-source kernel modules
+# (github.com/NVIDIA/open-gpu-kernel-modules): the open modules only
+# support Turing and later (they need the GSP first introduced there) --
+# Maxwell/Pascal/Volta hardware needs this classic module. 580.xx is the
+# last driver branch that supports Maxwell/Pascal at all (confirmed via
+# NVIDIA's own release notes + Arch's own advisory on the following 590
+# branch dropping it) -- picked as the default version for exactly that
+# reason, not arbitrarily. Any other version works too, not just 580.xx
+# (recipe_source_for_version below) -- NVIDIA's own version strings are
+# the download URL 1:1 across branches, confirmed against several real
+# releases (535.x, 580.76.05, 580.105.08, 580.126.09, ...), same
+# "explicit =<version> is a real, checked override" contract dwm.fis's
+# own recipe_source_for_version already established.
+#
+# The kernel module's own build wrapper (kernel/*.c in the extracted
+# installer) is real, compilable source -- the actual driver logic
+# (nv-kernel.o_binary, embedded in kernel/nvidia/) is a precompiled
+# object NVIDIA ships for every distro, proprietary or not. Not a
+# FloraOS-specific compromise; this is simply how this driver works
+# everywhere, confirmed directly by extracting a real installer and
+# reading its own .manifest (KERNEL_MODULE_SRC entries alongside the one
+# *_binary object file).
+#
+# PKG_MANUAL_UPDATE=1: same reasoning as linux-lts.fis -- rebuilding/
+# reinstalling a GPU driver is consequential enough that it shouldn't
+# happen unattended inside a routine `fau update` sweep; naming it
+# explicitly (`fau update nvidia` / `fau bootstrap-build nvidia`) still
+# works. No PKG_NEEDS_DISK: unlike the kernel itself, installing this on
+# a live/RAM system has real, immediate effect (the module can actually
+# be loaded there), so linux-lts.fis's "zero effect on a live system"
+# reasoning for that flag doesn't apply here.
+PKG_SRC_URL="https://download.nvidia.com/XFree86/Linux-x86_64/580.173.02/NVIDIA-Linux-x86_64-580.173.02.run"
+PKG_SRC_SHA256="8d8eb9001e05a9a8a663d3d5d304feb64ef2844ee185ccdfd952786820f46e1b"
+PKG_VERSION="580.173.02"
+PKG_DESCRIPTION="NVIDIA proprietary GPU driver (kernel module + GLVND/Vulkan userspace)"
+PKG_MANUAL_UPDATE="1"
+# linux-lts: needs its build-capable kernel tree (see linux-lts.fis) to
+# compile the kernel module against. libglvnd: the vendor-neutral EGL/GLX
+# dispatcher this driver's own vendor JSON plugs into -- already
+# alpm-fetched today, but only ever as a transitive mangowm dependency;
+# declared explicitly here so `fau bootstrap-build nvidia` doesn't
+# silently depend on mangowm having been installed first (confirmed via
+# fau.md's own documented egl_vendor.d/__EGL_VENDOR_LIBRARY_DIRS
+# mechanism -- mesa's real package installs its own vendor JSON the exact
+# same way). libdrm: DRM ioctls nvidia-smi/the kernel module's userspace
+# side both use. vulkan-icd-loader: not pulled by anything else yet --
+# needed for any app to actually find/use the Vulkan ICD JSON below.
+PKG_DEPENDS="linux-lts,libglvnd,libdrm,vulkan-icd-loader"
+PKG_BUILD_DEPS="gcc,make"
+
+recipe_source_for_version() {
+	local version=$1
+	echo "https://download.nvidia.com/XFree86/Linux-x86_64/${version}/NVIDIA-Linux-x86_64-${version}.run"
+	echo ""
+}
+
+# Relevant subset of the installer's real .manifest, confirmed by
+# extracting a real 580.173.02 installer and reading it directly (not
+# guessed): a Wayland/GLVND desktop (mango, this project's own compositor)
+# needs OPENGL_LIB/OPENGL_SYMLINK (the actual _nvidia-suffixed GL/EGL/GLES
+# libraries + their unversioned symlinks), UTILITY_LIB/UTILITY_LIB_SYMLINK
+# (libnvidia-allocator/gpucomp -- dlopen'd by the above at runtime),
+# GBM_BACKEND_LIB_SYMLINK (wlroots' GBM renderer path), ICD JSON for both
+# GLVND's own vendor dispatch (GLVND_EGL_ICD_JSON) and nvidia's own
+# window-system backend selection (EGL_EXTERNAL_PLATFORM_JSON -- GBM and
+# the older EGLStream-based wayland platform, both installed, the
+# compositor's own EGL_EXT_platform probing picks the right one), and
+# VULKAN_ICD_JSON for Vulkan. Deliberately NOT installed: Xorg's own GLX
+# module and X-specific ICDs (FloraOS ships no Xorg at all), the
+# COMPAT32 (32-bit) tree (would need a whole separate 32-bit-capable
+# libc/multilib setup FloraOS doesn't have), systemd units (no systemd),
+# nvidia-installer/nvidia-uninstall/DKMS_CONF (we build+merge directly,
+# never run the installer), and the CUDA/OpenCL/NVENC/NVDEC compute
+# stack (libcuda.so alone is ~96MB; out of scope for "desktop GPU
+# accel" -- a real, deliberate scope cut, not an oversight, revisit if
+# CUDA/compute ever becomes a real ask). nvidia-smi + libnvidia-ml ARE
+# installed despite being under the CUDA_LIB umbrella in NVIDIA's own
+# manifest taxonomy: the one basic "is my GPU detected" diagnostic this
+# feature's own verification leans on. FIRMWARE (gsp_*.bin) is installed
+# too even though the Pascal card this was developed against doesn't need
+# it -- Turing+ GSP-based GPUs do, and "all NVIDIA drivers should work"
+# means not hard-coding this recipe to just Pascal.
+recipe_build() {
+	local src=$1 files=$2 sandbox_dir=$3
+
+	[ -f "$FAU_ROOT/boot/kernelrelease" ] \
+		|| die "nvidia: no $FAU_ROOT/boot/kernelrelease -- is linux-lts installed?"
+	local kernel_release; kernel_release=$(cat "$FAU_ROOT/boot/kernelrelease")
+	local kernel_build="$FAU_ROOT/usr/lib/modules/$kernel_release/build"
+	[ -d "$kernel_build" ] \
+		|| die "nvidia: no build-capable kernel tree at $kernel_build -- rebuild linux-lts first ('fau bootstrap-build linux-lts') to get one"
+
+	local manifest="$src/.manifest"
+	[ -f "$manifest" ] || die "nvidia: $src/.manifest missing -- installer didn't extract as expected"
+
+	log "nvidia: building kernel module against $kernel_release"
+	PATH="$sandbox_dir/usr/bin:$PATH" \
+		make -C "$src/kernel" SYSSRC="$kernel_build" KERNEL_UNAME="$kernel_release" -j"$(nproc)" modules
+	PATH="$sandbox_dir/usr/bin:$PATH" \
+		make -C "$src/kernel" SYSSRC="$kernel_build" KERNEL_UNAME="$kernel_release" \
+		INSTALL_MOD_PATH="$files" modules_install
+
+	local libdir="$files/usr/lib"
+	local vulkan_icd="$files/usr/share/vulkan/icd.d" vulkan_layer="$files/usr/share/vulkan/implicit_layer.d"
+	local glvnd_dir="$files/usr/share/glvnd/egl_vendor.d"
+	local platform_dir="$files/usr/share/egl/egl_external_platform.d"
+	local fw_dir="$files/usr/lib/firmware/nvidia/$PKG_VERSION"
+	mkdir -p "$libdir" "$vulkan_icd" "$vulkan_layer" "$glvnd_dir" "$platform_dir" "$fw_dir" "$files/usr/bin"
+
+	# OPENGL_LIB / UTILITY_LIB: real versioned .so files, no subdir --
+	# confirmed every real entry's own extra field (when present at all)
+	# is just a literal "/" no-op, never a real path (checked directly:
+	# `awk 'NF==6'` against a real manifest found only "/" there).
+	# nvidia-smi/libnvidia-ml are matched by name, not by the CUDA_LIB
+	# type wholesale (that type also covers libcuda.so/ptxjitcompiler,
+	# deliberately excluded above).
+	grep -E " (OPENGL_LIB|UTILITY_LIB) NATIVE" "$manifest" | grep -v "^\./32/" | while read -r relpath mode _; do
+		cp "$src/$relpath" "$libdir/$(basename "$relpath")"
+		chmod "$mode" "$libdir/$(basename "$relpath")"
+	done || true
+	for f in libnvidia-ml.so.$PKG_VERSION nvidia-smi; do
+		grep -E "^$f " "$manifest" | grep -v "^\./32/" | while read -r relpath mode _; do
+			local destdir=$libdir
+			[ "$f" = nvidia-smi ] && destdir="$files/usr/bin"
+			cp "$src/$relpath" "$destdir/$(basename "$relpath")"
+			chmod "$mode" "$destdir/$(basename "$relpath")"
+		done || true
+	done
+
+	# *_SYMLINK: target is always the field immediately before the
+	# trailing MODULE:<name> field -- confirmed this holds regardless of
+	# whether the optional "/" filler field is present (field count varies
+	# 6 vs 7 across real entries; $(NF-1) is stable either way, checked
+	# directly against both shapes).
+	grep -E " (OPENGL_SYMLINK|UTILITY_LIB_SYMLINK|GBM_BACKEND_LIB_SYMLINK) NATIVE" "$manifest" \
+		| grep -v "^\./32/" \
+		| awk '{print $1, $(NF-1)}' \
+		| while read -r linkname target; do
+			ln -sf "$target" "$libdir/$linkname"
+		done || true
+	for f in libnvidia-ml.so.1 libnvidia-ml.so; do
+		grep -E "^$f " "$manifest" | grep -v "^\./32/" | awk '{print $1, $(NF-1)}' \
+			| while read -r linkname target; do ln -sf "$target" "$libdir/$linkname"; done || true
+	done
+
+	# VULKAN_ICD_JSON: subdir IS meaningful here (icd.d/ vs
+	# implicit_layer.d/), taken directly from the manifest's own field
+	# rather than hardcoded per filename.
+	grep " VULKAN_ICD_JSON " "$manifest" | while read -r relpath mode _ subdir _; do
+		local destdir=$vulkan_icd
+		[ "$subdir" = "implicit_layer.d/" ] && destdir=$vulkan_layer
+		cp "$src/$relpath" "$destdir/$(basename "$relpath")"
+		chmod "$mode" "$destdir/$(basename "$relpath")"
+	done || true
+
+	# GLVND_EGL_ICD_JSON / EGL_EXTERNAL_PLATFORM_JSON: no per-file subdir
+	# field at all in the manifest for these two types (confirmed: always
+	# exactly 4 fields, straight to MODULE:) -- destination is a fixed
+	# directory by convention (matches fau.md's own already-documented
+	# mesa vendor JSON path, usr/share/glvnd/egl_vendor.d/50_mesa.json).
+	grep " GLVND_EGL_ICD_JSON " "$manifest" | while read -r relpath mode _; do
+		cp "$src/$relpath" "$glvnd_dir/$(basename "$relpath")"
+		chmod "$mode" "$glvnd_dir/$(basename "$relpath")"
+	done || true
+	grep " EGL_EXTERNAL_PLATFORM_JSON " "$manifest" | while read -r relpath mode _; do
+		cp "$src/$relpath" "$platform_dir/$(basename "$relpath")"
+		chmod "$mode" "$platform_dir/$(basename "$relpath")"
+	done || true
+
+	# FIRMWARE: GSP blobs Turing+ needs (unused, harmless, on the Pascal
+	# card this recipe was developed against) -- real kernel firmware
+	# search path is /lib/firmware/nvidia/<driver-version>/, hardcoded in
+	# nvidia's own kernel module source, not a FloraOS convention.
+	grep " FIRMWARE " "$manifest" | while read -r relpath mode _; do
+		cp "$src/$relpath" "$fw_dir/$(basename "$relpath")"
+		chmod "$mode" "$fw_dir/$(basename "$relpath")"
+	done || true
+
+	# Nouveau (linux-lts.fis builds it as a loadable module) must not bind
+	# the GPU nvidia now owns -- classic, well-documented conflict.
+	# nvidia-drm's own modeset param defaults OFF upstream for legacy
+	# reasons; wlroots/mango's DRM KMS backend needs it on to see the
+	# device at all.
+	mkdir -p "$files/etc/modprobe.d"
+	cat > "$files/etc/modprobe.d/nvidia.conf" <<-'EOF'
+	blacklist nouveau
+	options nvidia-drm modeset=1
+	EOF
+}
+
+recipe_post_merge() {
+	local root=$1
+	local kernel_release; kernel_release=$(cat "$root/boot/kernelrelease")
+	log "nvidia: running depmod for $kernel_release"
+	"$root/usr/bin/depmod" -b "$root" "$kernel_release"
+}
