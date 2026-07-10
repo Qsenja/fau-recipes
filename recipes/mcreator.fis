@@ -1,0 +1,134 @@
+# mcreator: Minecraft mod maker (GPLv3, github.com/MCreator/MCreator).
+# Built via `fau build mcreator`. Two real, distinct paths, not one recipe
+# awkwardly bent to cover both:
+#
+# - Default (stable): the real prebuilt Linux release tarball MCreator's
+#   own CI publishes (confirmed via a real download + sha256, not
+#   guessed) -- already bundles its own JDK (a `jdk/` directory inside),
+#   so no Java dependency needed at runtime. Same "prebuilt, not compiled"
+#   shape as vesktop.fis/cursor.fis.
+# - `fau build mcreator=nightly`: builds the `2026.3` branch (unreleased,
+#   no prebuilt tarball exists for it yet -- confirmed via the real GitHub
+#   API, only tagged releases get one) from source via the project's own
+#   real Gradle task, `gradle exportLinux -Psnapshot=true` (confirmed
+#   directly against `.github/workflows/deploy.yml`, the actual workflow
+#   that builds MCreator's own official releases -- not guessed).
+#
+# Real, honest caveat on the nightly path: the official build sets up a
+# specific JetBrains-distributed JDK with JCEF (Chromium Embedded
+# Framework) support baked in (`distribution: jetbrains`,
+# `java-package: jdk+jcef`) before running Gradle -- the export task then
+# bundles whatever JDK was active into its own output, which is where the
+# official release's `jdk/` directory comes from. This recipe uses the
+# real `jdk25-openjdk` alpm package instead (matching the CI's Java 25
+# version, but the plain OpenJDK build, not the JCEF-patched JetBrains
+# one) since there's no equivalent alpm package for JetBrains' own JCEF
+# runtime. The app itself should build and run; anything depending on
+# MCreator's embedded-webview/JCEF-specific native support may not work
+# identically to an official nightly. Untested end to end -- a real
+# Gradle build here is long, needs real network access mid-build for
+# Gradle's own Maven dependency resolution (a genuine deviation from this
+# project's usual fully-sandboxed build model), and wasn't run for real
+# before this recipe was written. Fix forward from a real failure, same
+# as every other recipe here, rather than guess further.
+PKG_SRC_URL="https://github.com/MCreator/MCreator/releases/download/2026.2.27711/MCreator.2026.2.Linux.64bit.tar.gz"
+PKG_SRC_SHA256="961d6f0909ffadf81b693b1cb2014a7df975527d4f39f89b141883b10e20c3c6"
+PKG_VERSION="2026.2.27711"
+PKG_DESCRIPTION="MCreator -- Minecraft mod maker (Java/Swing, bundled JDK+JCEF, prebuilt upstream release by default)"
+# Chromium/JCEF-shaped dependency set, same reasoning as vesktop.fis's own
+# (MCreator embeds JCEF for its web-view/help panels) plus the plain
+# Swing/AWT X11 stack the rest of the UI needs.
+PKG_DEPENDS="glibc,gcc-libs,glib2,nspr,nss,dbus,at-spi2-core,libcups,cairo,gtk3,pango,libx11,libxcomposite,libxdamage,libxext,libxfixes,libxrandr,libxrender,libxtst,libxi,mesa,expat,libxcb,libxkbcommon,alsa-lib,fontconfig"
+# Only used by the nightly path -- empty (not fetched at all) for a
+# normal stable build, matching every other recipe's PKG_BUILD_DEPS
+# convention here.
+PKG_BUILD_DEPS="jdk25-openjdk,gradle,git"
+
+# Only "nightly" is special-cased (the 2026.3 branch, source build, no
+# checksum possible -- a branch ref is a moving target, same "unverified
+# download, loud warning instead of a silent hard pin" contract dwm.fis's
+# own recipe_source_for_version already established for exactly this
+# case). Any other explicit version is treated as another stable release
+# tag: the real download filename only ever uses the tag's first two
+# dot-separated components (confirmed: tag "2026.2.27711" -> filename
+# "MCreator.2026.2.Linux.64bit.tar.gz", the full build number is not part
+# of the filename), so that's reconstructed here rather than guessed per
+# version.
+recipe_source_for_version() {
+	local version=$1
+	if [ "$version" = "nightly" ]; then
+		echo "https://github.com/MCreator/MCreator/archive/refs/heads/2026.3.tar.gz"
+		echo ""
+		return 0
+	fi
+	local short="${version%.*}"
+	echo "https://github.com/MCreator/MCreator/releases/download/${version}/MCreator.${short}.Linux.64bit.tar.gz"
+	echo ""
+}
+
+recipe_build() {
+	local src=$1 app_dir=$2 sandbox_dir=$3
+
+	if [ -f "$src/build.gradle" ]; then
+		# Nightly: real source tree, real Gradle build -- see the header
+		# comment above for exactly what's known-different from the
+		# official CI build (plain OpenJDK 25, not JetBrains' JCEF-patched
+		# one).
+		log "mcreator: building nightly (2026.3) from source -- this is long, and needs real network access for Gradle's own dependency resolution"
+		(
+			cd "$src"
+			PATH="$sandbox_dir/usr/bin:$PATH" \
+				JAVA_HOME="$sandbox_dir/usr/lib/jvm/java-25-openjdk" \
+				gradle exportLinux -Psnapshot=true --no-daemon
+		)
+
+		local export_tar; export_tar=$(find "$src/build/export" -maxdepth 1 -name '*.tar.gz' | head -1)
+		[ -n "$export_tar" ] || die "mcreator: no build/export/*.tar.gz produced -- see the Gradle output above"
+		local extracted; extracted=$(mktemp -d)
+		tar -xzf "$export_tar" -C "$extracted"
+		local inner; inner=$(find "$extracted" -maxdepth 1 -mindepth 1 -type d | head -1)
+		[ -n "$inner" ] || die "mcreator: build/export tarball didn't contain the expected single top-level directory"
+
+		local libdir="$app_dir/usr/lib/mcreator"
+		mkdir -p "$libdir"
+		cp -a "$inner/." "$libdir/"
+		rm -rf "$extracted"
+	else
+		# Stable: already a ready-to-run prebuilt tree (own bundled jdk/,
+		# lib/, plugins/) -- just relocate it, same shape as vesktop.fis.
+		local libdir="$app_dir/usr/lib/mcreator"
+		mkdir -p "$libdir"
+		cp -a "$src/." "$libdir/"
+	fi
+
+	# Own launcher, not mcreator.sh's shipped one -- that script also
+	# writes a ~/Desktop/mcreator.desktop file as a side effect of just
+	# launching, which doesn't fit this project's isolated-app model
+	# (the .desktop entry below is installed the normal way instead).
+	# Same CLASSPATH/java flags mcreator.sh itself uses (confirmed by
+	# reading it directly out of the real release tarball).
+	mkdir -p "$app_dir/usr/bin"
+	cat > "$app_dir/usr/bin/mcreator" <<-EOF
+	#!/bin/sh
+	cd "$libdir" || exit 1
+	export CLASSPATH="./lib/mcreator.jar:./lib/*"
+	exec ./jdk/bin/java --add-opens=java.base/java.lang=ALL-UNNAMED --enable-native-access=ALL-UNNAMED,jcef net.mcreator.Launcher "\$@"
+	EOF
+	chmod 755 "$app_dir/usr/bin/mcreator"
+
+	mkdir -p "$app_dir/usr/share/icons/hicolor/256x256/apps"
+	cp "$libdir/icon.png" "$app_dir/usr/share/icons/hicolor/256x256/apps/mcreator.png" 2>/dev/null || true
+
+	mkdir -p "$app_dir/usr/share/applications"
+	cat > "$app_dir/usr/share/applications/mcreator.desktop" <<-EOF
+	[Desktop Entry]
+	Name=MCreator
+	Comment=Minecraft mod maker
+	Exec=mcreator
+	Icon=mcreator
+	Terminal=false
+	Type=Application
+	Categories=Development;IDE;
+	StartupWMClass=MCreator
+	EOF
+}
